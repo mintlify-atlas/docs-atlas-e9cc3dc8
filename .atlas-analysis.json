@@ -1,0 +1,137 @@
+{
+  "projectType": "sdk-library",
+  "projectName": "Stagehand Python SDK",
+  "projectDescription": "The AI Browser Automation Framework - Python SDK for controlling web browsers with natural language and code",
+  "theme": "palm",
+  "primaryColor": "#f8ca40",
+  "lightColor": "#7c5c1c",
+  "darkColor": "#201e18",
+  "navigation": {
+    "tabs": [
+      {
+        "tab": "Documentation",
+        "groups": [
+          {
+            "group": "Get Started",
+            "pages": [
+              "introduction",
+              "quickstart",
+              "installation"
+            ]
+          },
+          {
+            "group": "Core Concepts",
+            "pages": [
+              "concepts/sessions",
+              "concepts/actions",
+              "concepts/client-configuration",
+              "concepts/async-support"
+            ]
+          },
+          {
+            "group": "Guides",
+            "pages": [
+              "guides/observing-elements",
+              "guides/acting-on-pages",
+              "guides/extracting-data",
+              "guides/agent-execution",
+              "guides/streaming-responses",
+              "guides/error-handling",
+              "guides/timeouts-retries"
+            ]
+          },
+          {
+            "group": "Advanced",
+            "pages": [
+              "advanced/raw-responses",
+              "advanced/custom-http-client",
+              "advanced/logging",
+              "advanced/browser-integration"
+            ]
+          },
+          {
+            "group": "Examples",
+            "pages": [
+              "examples/basic-automation",
+              "examples/playwright-integration",
+              "examples/data-extraction",
+              "examples/multi-step-workflows"
+            ]
+          }
+        ]
+      },
+      {
+        "tab": "API Reference",
+        "groups": [
+          {
+            "group": "Client",
+            "pages": [
+              "api/client/stagehand",
+              "api/client/async-stagehand"
+            ]
+          },
+          {
+            "group": "Sessions",
+            "pages": [
+              "api/sessions/start",
+              "api/sessions/navigate",
+              "api/sessions/observe",
+              "api/sessions/act",
+              "api/sessions/extract",
+              "api/sessions/execute",
+              "api/sessions/replay",
+              "api/sessions/end"
+            ]
+          },
+          {
+            "group": "Types",
+            "pages": [
+              "api/types/session-responses",
+              "api/types/stream-events",
+              "api/types/model-config",
+              "api/types/action"
+            ]
+          },
+          {
+            "group": "Exceptions",
+            "pages": [
+              "api/exceptions/error-types",
+              "api/exceptions/handling"
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  "keyFeatures": [
+    "AI-powered browser automation with natural language",
+    "Session-based API for browser control",
+    "Observe, act, extract, and execute operations",
+    "Streaming response support with SSE",
+    "Async and sync client support",
+    "Playwright integration for BYOB (Bring Your Own Browser)",
+    "Auto-caching and self-healing workflows",
+    "Comprehensive error handling and retries"
+  ],
+  "publicApiSurface": [
+    "Stagehand",
+    "AsyncStagehand",
+    "sessions.start()",
+    "sessions.navigate()",
+    "sessions.observe()",
+    "sessions.act()",
+    "sessions.extract()",
+    "sessions.execute()",
+    "sessions.replay()",
+    "sessions.end()",
+    "SessionStartResponse",
+    "SessionActResponse",
+    "SessionObserveResponse",
+    "SessionExtractResponse",
+    "SessionExecuteResponse",
+    "StreamEvent",
+    "APIError",
+    "RateLimitError",
+    "AuthenticationError"
+  ]
+}
