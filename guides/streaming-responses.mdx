@@ -1,0 +1,394 @@
+---
+title: Streaming Responses
+description: Get real-time updates from Stagehand operations using Server-Sent Events
+---
+
+Stagehand supports streaming responses via Server-Sent Events (SSE) for all major operations. Streaming provides real-time progress updates, logs, and status information as operations execute.
+
+## Enabling Streaming
+
+To enable streaming, you must set **two parameters**:
+
+1. `stream_response=True` - Tells the client to parse SSE events
+2. `x_stream_response="true"` - Tells the server to send SSE events
+
+```python
+import asyncio
+from stagehand import AsyncStagehand
+
+async def main():
+    async with AsyncStagehand() as client:
+        session = await client.sessions.start(
+            model_name="anthropic/claude-sonnet-4-6"
+        )
+        
+        await session.navigate(url="https://example.com")
+        
+        # Enable streaming with both parameters
+        stream = await session.act(
+            input="click the login button",
+            stream_response=True,        # Client-side: parse as SSE
+            x_stream_response="true"     # Server-side: send as SSE
+        )
+        
+        # Iterate over events
+        async for event in stream:
+            print(f"Event type: {event.type}")
+            print(f"Event data: {event.data}")
+        
+        await session.end()
+
+asyncio.run(main())
+```
+
+## Stream Event Types
+
+Every stream event has two properties:
+
+```python
+event.type  # "log" or "system"
+event.data  # Event-specific data
+```
+
+### Log Events
+
+Provide debugging information and progress updates:
+
+```python
+if event.type == "log":
+    print(f"[LOG] {event.data.message}")
+```
+
+### System Events
+
+Indicate operation status:
+
+```python
+if event.type == "system":
+    status = event.data.status  # "running", "finished", or "error"
+    
+    if status == "finished":
+        result = event.data.result  # Final operation result
+    elif status == "error":
+        error = event.data.error  # Error message
+```
+
+## Processing Stream Events
+
+### Basic Pattern
+
+```python
+async def process_stream(stream):
+    result = None
+    
+    async for event in stream:
+        if event.type == "log":
+            # Handle progress logs
+            print(f"Progress: {event.data.message}")
+            
+        elif event.type == "system":
+            status = event.data.status
+            
+            if status == "running":
+                # Operation in progress
+                pass
+            elif status == "finished":
+                # Success - get the result
+                result = event.data.result
+                print("Operation completed successfully")
+            elif status == "error":
+                # Failure - handle error
+                error_msg = event.data.error or "Unknown error"
+                raise RuntimeError(f"Stream error: {error_msg}")
+    
+    return result
+```
+
+### Helper Function Pattern
+
+Create a reusable helper for common stream handling:
+
+```python
+async def stream_to_result(stream, label: str = "operation"):
+    """Process a stream and return the final result."""
+    result_payload = None
+    
+    async for event in stream:
+        if event.type == "log":
+            print(f"[{label}] {event.data.message}")
+            continue
+        
+        status = event.data.status
+        print(f"[{label}] Status: {status}")
+        
+        if status == "finished":
+            result_payload = event.data.result
+        elif status == "error":
+            error_message = event.data.error or "unknown error"
+            raise RuntimeError(f"{label} failed: {error_message}")
+    
+    return result_payload
+
+# Usage
+stream = await session.act(
+    input="click button",
+    stream_response=True,
+    x_stream_response="true"
+)
+
+result = await stream_to_result(stream, "act")
+```
+
+## Streaming All Operations
+
+### Act with Streaming
+
+```python
+stream = await session.act(
+    input="click the submit button",
+    stream_response=True,
+    x_stream_response="true"
+)
+
+async for event in stream:
+    if event.type == "log":
+        print(f"Action log: {event.data.message}")
+    elif event.data.status == "finished":
+        print(f"Action result: {event.data.result.get('message')}")
+```
+
+### Observe with Streaming
+
+```python
+stream = await session.observe(
+    instruction="find all navigation links",
+    stream_response=True,
+    x_stream_response="true"
+)
+
+async for event in stream:
+    if event.type == "log":
+        print(f"Observation: {event.data.message}")
+    elif event.data.status == "finished":
+        actions = event.data.result
+        print(f"Found {len(actions)} possible actions")
+```
+
+### Extract with Streaming
+
+```python
+stream = await session.extract(
+    instruction="extract product information",
+    schema={
+        "type": "object",
+        "properties": {
+            "name": {"type": "string"},
+            "price": {"type": "number"}
+        }
+    },
+    stream_response=True,
+    x_stream_response="true"
+)
+
+async for event in stream:
+    if event.type == "log":
+        print(f"Extraction progress: {event.data.message}")
+    elif event.data.status == "finished":
+        data = event.data.result
+        print(f"Extracted: {data}")
+```
+
+### Execute with Streaming
+
+```python
+stream = await session.execute(
+    execute_options={
+        "instruction": "Find and click the pricing link",
+        "max_steps": 5
+    },
+    agent_config={
+        "model": "anthropic/claude-opus-4-6"
+    },
+    stream_response=True,
+    x_stream_response="true"
+)
+
+async for event in stream:
+    if event.type == "log":
+        print(f"Agent: {event.data.message}")
+    elif event.data.status == "finished":
+        result = event.data.result
+        print(f"Agent completed: {result.get('message')}")
+        print(f"Steps taken: {len(result.get('actions', []))}")
+```
+
+## Advanced Streaming Patterns
+
+### Progress Tracking
+
+```python
+import sys
+
+async def track_progress(stream):
+    steps_completed = 0
+    
+    async for event in stream:
+        if event.type == "log":
+            steps_completed += 1
+            # Update progress bar
+            print(f"\rProgress: {steps_completed} steps...", end="")
+            sys.stdout.flush()
+        elif event.data.status == "finished":
+            print("\nCompleted!")
+            return event.data.result
+```
+
+### Logging to File
+
+```python
+import json
+from datetime import datetime
+
+async def log_stream_to_file(stream, filename):
+    with open(filename, 'w') as f:
+        async for event in stream:
+            log_entry = {
+                "timestamp": datetime.now().isoformat(),
+                "type": event.type,
+                "data": event.data.__dict__ if hasattr(event.data, '__dict__') else str(event.data)
+            }
+            f.write(json.dumps(log_entry) + "\n")
+            
+            if event.data.status == "finished":
+                return event.data.result
+```
+
+### Cancelling Streams
+
+```python
+import asyncio
+
+async def execute_with_timeout(session, max_duration):
+    stream = await session.execute(
+        execute_options={
+            "instruction": "Complete the task",
+            "max_steps": 20
+        },
+        agent_config={"model": "anthropic/claude-sonnet-4-6"},
+        stream_response=True,
+        x_stream_response="true"
+    )
+    
+    try:
+        async with asyncio.timeout(max_duration):
+            async for event in stream:
+                if event.type == "log":
+                    print(event.data.message)
+                elif event.data.status == "finished":
+                    return event.data.result
+    except asyncio.TimeoutError:
+        print("Operation exceeded maximum duration")
+        # Stream will be cancelled automatically
+        return None
+```
+
+### Collecting All Logs
+
+```python
+async def collect_logs(stream):
+    logs = []
+    result = None
+    
+    async for event in stream:
+        if event.type == "log":
+            logs.append({
+                "message": event.data.message,
+                "timestamp": datetime.now()
+            })
+        elif event.data.status == "finished":
+            result = event.data.result
+    
+    return {
+        "result": result,
+        "logs": logs
+    }
+```
+
+## Sync Client Streaming
+
+The synchronous client also supports streaming:
+
+```python
+from stagehand import Stagehand
+
+with Stagehand() as client:
+    session = client.sessions.start(
+        model_name="anthropic/claude-sonnet-4-6"
+    )
+    
+    stream = client.sessions.act(
+        session.id,
+        input="click the button",
+        stream_response=True,
+        x_stream_response="true"
+    )
+    
+    # Iterate synchronously
+    for event in stream:
+        if event.type == "log":
+            print(event.data.message)
+        elif event.data.status == "finished":
+            print(event.data.result)
+```
+
+## Best Practices
+
+<Tip>
+Always set both `stream_response=True` and `x_stream_response="true"` to enable streaming. Forgetting either will result in non-streaming behavior.
+</Tip>
+
+<Warning>
+Don't forget to consume the entire stream. Partially consumed streams may leave resources hanging.
+</Warning>
+
+<Info>
+For long-running operations like `execute()`, streaming is highly recommended to monitor progress and detect issues early.
+</Info>
+
+## When to Use Streaming
+
+### Use Streaming When:
+
+- You need real-time progress updates
+- Operations might take a long time (like agent execution)
+- You want detailed logs for debugging
+- You're building interactive UIs that show progress
+- You need to detect and handle errors early
+
+### Use Non-Streaming When:
+
+- You just need the final result
+- Operations are fast (< 1 second)
+- You're running batch operations
+- You want simpler code without event handling
+
+## Comparison: Streaming vs Non-Streaming
+
+```python
+# Non-streaming: Simple, wait for result
+response = await session.act(input="click button")
+print(response.data.get('message'))
+
+# Streaming: Real-time updates, more complex
+stream = await session.act(
+    input="click button",
+    stream_response=True,
+    x_stream_response="true"
+)
+
+async for event in stream:
+    if event.type == "log":
+        print(f"Progress: {event.data.message}")
+    elif event.data.status == "finished":
+        print(f"Result: {event.data.result.get('message')}")
+```

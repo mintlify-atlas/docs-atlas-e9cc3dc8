@@ -1,0 +1,250 @@
+---
+title: "Logging"
+description: "Enable debug logging to troubleshoot API requests and responses"
+---
+
+Stagehand uses Python's standard library `logging` module to provide detailed information about API requests, responses, and internal operations.
+
+## Quick Start
+
+Enable logging by setting the `STAGEHAND_LOG` environment variable:
+
+```bash
+# Info level logging
+export STAGEHAND_LOG=info
+
+# Debug level logging (verbose)
+export STAGEHAND_LOG=debug
+```
+
+Then run your script:
+
+```bash
+python your_script.py
+```
+
+## Logging Levels
+
+### Info Level
+
+Logs high-level operations and important events:
+
+```bash
+export STAGEHAND_LOG=info
+```
+
+Example output:
+```
+[2024-03-02 10:15:23 - stagehand._base_client:1091 - INFO] Retrying request to /v1/sessions/start in 0.5 seconds
+```
+
+### Debug Level
+
+Logs detailed information including request/response details:
+
+```bash
+export STAGEHAND_LOG=debug
+```
+
+Example output:
+```
+[2024-03-02 10:15:23 - stagehand._base_client:999 - DEBUG] Sending HTTP Request: POST https://api.stagehand.browserbase.com/v1/sessions/start
+[2024-03-02 10:15:24 - stagehand._base_client:1037 - DEBUG] HTTP Response: POST https://api.stagehand.browserbase.com/v1/sessions/start "200 OK" {'content-type': 'application/json', ...}
+[2024-03-02 10:15:24 - stagehand._base_client:484 - DEBUG] Request options: {'method': 'post', 'url': '/v1/sessions/start', ...}
+```
+
+## Example Script
+
+Here's a complete example demonstrating logging:
+
+```python logging_example.py
+import os
+import asyncio
+from stagehand import AsyncStagehand
+
+
+async def main() -> None:
+    # Logging is controlled by STAGEHAND_LOG environment variable
+    async with AsyncStagehand(
+        browserbase_api_key=os.environ.get("BROWSERBASE_API_KEY"),
+        browserbase_project_id=os.environ.get("BROWSERBASE_PROJECT_ID"),
+        model_api_key=os.environ.get("MODEL_API_KEY"),
+    ) as client:
+        # Start a session with verbose logging enabled
+        session = await client.sessions.start(
+            model_name="anthropic/claude-sonnet-4-6",
+            verbose=2,  # Session-level verbosity
+        )
+
+        print(f"Session started: {session.id}")
+
+        try:
+            await session.navigate(url="https://www.example.com")
+            
+            # Extract with streaming to see log events
+            stream = await session.extract(
+                instruction="Extract the heading text",
+                schema={
+                    "type": "object",
+                    "properties": {
+                        "headingText": {"type": "string"},
+                    },
+                    "required": ["headingText"],
+                },
+                stream_response=True,
+                x_stream_response="true",
+            )
+
+            async for event in stream:
+                if event.type == "log":
+                    print(f"[log] {event.data.message}")
+                elif event.type == "system":
+                    print(f"[system] status={event.data.status}")
+        finally:
+            await session.end()
+
+
+if __name__ == "__main__":
+    asyncio.run(main())
+```
+
+Run with logging:
+
+```bash
+STAGEHAND_LOG=debug python logging_example.py
+```
+
+## Log Format
+
+Logs follow this format:
+
+```
+[TIMESTAMP - LOGGER_NAME:LINE_NUMBER - LEVEL] MESSAGE
+```
+
+Example:
+```
+[2024-03-02 10:15:23 - stagehand._base_client:999 - DEBUG] Sending HTTP Request: POST /v1/sessions/start
+```
+
+## What Gets Logged
+
+### At INFO Level
+
+- Retry attempts and timing
+- Important state changes
+- Connection management events
+
+### At DEBUG Level
+
+Everything from INFO level, plus:
+
+- HTTP request details (method, URL, headers)
+- HTTP response details (status, headers, timing)
+- Request options and parameters
+- httpx library debug information
+- Internal SDK operations
+
+## Logging in Production
+
+<Warning>
+Debug logging can expose sensitive information including API keys, request bodies, and response data. Only use debug logging in development or secure logging environments.
+</Warning>
+
+### Recommended Production Setup
+
+```bash
+# Use info level in production
+export STAGEHAND_LOG=info
+```
+
+Or disable SDK logging entirely:
+
+```bash
+# No STAGEHAND_LOG variable set = no SDK logging
+unset STAGEHAND_LOG
+```
+
+## Custom Logging Configuration
+
+For more control, configure Python's logging module directly:
+
+```python
+import logging
+
+# Configure Stagehand logger
+stagehand_logger = logging.getLogger("stagehand")
+stagehand_logger.setLevel(logging.DEBUG)
+
+# Add custom handler
+handler = logging.FileHandler("stagehand.log")
+handler.setFormatter(
+    logging.Formatter(
+        "[%(asctime)s - %(name)s:%(lineno)d - %(levelname)s] %(message)s",
+        datefmt="%Y-%m-%d %H:%M:%S",
+    )
+)
+stagehand_logger.addHandler(handler)
+
+# Also configure httpx logger if needed
+httpx_logger = logging.getLogger("httpx")
+httpx_logger.setLevel(logging.DEBUG)
+httpx_logger.addHandler(handler)
+```
+
+## Session-Level Verbosity
+
+In addition to SDK logging, you can enable verbose logging for individual sessions:
+
+```python
+session = await client.sessions.start(
+    model_name="anthropic/claude-sonnet-4-6",
+    verbose=2,  # 0=quiet, 1=normal, 2=verbose
+)
+```
+
+This controls the amount of information returned in SSE log events during `act`, `observe`, `extract`, and `execute` operations.
+
+## Troubleshooting
+
+### No Logs Appearing
+
+1. Verify `STAGEHAND_LOG` is set:
+   ```bash
+   echo $STAGEHAND_LOG
+   ```
+
+2. Ensure you're setting it before running Python:
+   ```bash
+   STAGEHAND_LOG=debug python script.py
+   ```
+
+3. Check that Python's logging isn't suppressed:
+   ```python
+   import logging
+   logging.basicConfig(level=logging.DEBUG)
+   ```
+
+### Too Much Output
+
+If debug logging is too verbose, try info level:
+
+```bash
+STAGEHAND_LOG=info python script.py
+```
+
+Or filter specific loggers:
+
+```python
+import logging
+
+# Only show Stagehand logs, not httpx
+logging.getLogger("stagehand").setLevel(logging.DEBUG)
+logging.getLogger("httpx").setLevel(logging.WARNING)
+```
+
+## See Also
+
+- [Python logging documentation](https://docs.python.org/3/library/logging.html)
+- [Error Handling](/guides/error-handling)
+- [Streaming Responses](/guides/streaming-responses)

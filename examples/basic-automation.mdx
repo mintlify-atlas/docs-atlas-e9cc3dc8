@@ -1,0 +1,227 @@
+---
+title: "Basic Automation"
+description: "Simple browser automation examples using Stagehand's act() method"
+---
+
+## Overview
+
+Stagehand makes browser automation simple with natural language instructions. The `act()` method is the easiest way to perform actions on web pages without writing complex selectors or element finding logic.
+
+## Simple Click Action
+
+The most basic automation is clicking elements using natural language. Here's a complete example that navigates to a page and clicks a link:
+
+```python
+from stagehand import AsyncStagehand
+import asyncio
+import os
+
+async def main():
+    async with AsyncStagehand(
+        browserbase_api_key=os.environ.get("BROWSERBASE_API_KEY"),
+        browserbase_project_id=os.environ.get("BROWSERBASE_PROJECT_ID"),
+        model_api_key=os.environ.get("MODEL_API_KEY"),
+    ) as client:
+        # Start a new browser session
+        session = await client.sessions.start(
+            model_name="anthropic/claude-sonnet-4-6",
+        )
+
+        print(f"Session started: {session.id}")
+
+        try:
+            # Navigate to example.com
+            await session.navigate(
+                url="https://www.example.com",
+            )
+            print("Navigated to example.com")
+
+            # Call act() with a string instruction directly
+            act_stream = await session.act(
+                input="click the 'Learn more' link",
+                stream_response=True,
+                x_stream_response="true",
+            )
+
+            # Process the streaming response
+            async for event in act_stream:
+                if event.type == "log":
+                    print(f"[log] {event.data.message}")
+                elif event.data.status == "finished":
+                    result = event.data.result
+                    print(f"Action completed: {result}")
+
+        finally:
+            # Clean up resources
+            await session.end()
+            print("Session ended")
+
+asyncio.run(main())
+```
+
+## Understanding the Act Method
+
+The `act()` method accepts natural language instructions and performs the corresponding action on the page. You can use it in two ways:
+
+### 1. String Instructions (Recommended for Simple Actions)
+
+```python
+await session.act(
+    input="click the 'Sign Up' button",
+    stream_response=True,
+    x_stream_response="true",
+)
+```
+
+### 2. Action Objects from Observe
+
+For more complex scenarios, first use `observe()` to find elements, then pass the action to `act()`:
+
+```python
+# Find possible actions
+observe_stream = await session.observe(
+    instruction="find the link to view comments for the top post",
+    stream_response=True,
+    x_stream_response="true",
+)
+
+# Get results
+actions = []
+async for event in observe_stream:
+    if event.data.status == "finished":
+        actions = event.data.result or []
+
+# Perform the first action
+if actions:
+    act_stream = await session.act(
+        input=actions[0],
+        stream_response=True,
+        x_stream_response="true",
+    )
+```
+
+## Streaming Events
+
+When using `stream_response=True` and `x_stream_response="true"`, you get real-time progress updates:
+
+```python
+async def stream_to_result(stream, label: str):
+    result_payload = None
+    async for event in stream:
+        if event.type == "log":
+            print(f"[{label}][log] {event.data.message}")
+            continue
+
+        status = event.data.status
+        print(f"[{label}][system] status={status}")
+        
+        if status == "finished":
+            result_payload = event.data.result
+        elif status == "error":
+            error_message = event.data.error or "unknown error"
+            raise RuntimeError(f"{label} stream reported error: {error_message}")
+
+    return result_payload
+
+# Use it
+act_stream = await session.act(
+    input="click the first link",
+    stream_response=True,
+    x_stream_response="true",
+)
+result = await stream_to_result(act_stream, "act")
+```
+
+## Common Automation Patterns
+
+### Clicking Elements
+
+```python
+# Click a button
+await session.act(input="click the Submit button")
+
+# Click a link
+await session.act(input="click the 'Learn more' link")
+
+# Click by description
+await session.act(input="click the blue button in the top right corner")
+```
+
+### Form Interactions
+
+```python
+# Fill in text fields
+await session.act(input="type 'john@example.com' into the email field")
+
+# Select from dropdown
+await session.act(input="select 'United States' from the country dropdown")
+
+# Check checkboxes
+await session.act(input="check the 'I agree to terms' checkbox")
+```
+
+### Navigation
+
+```python
+# Click navigation links
+await session.act(input="click the 'About' link in the navigation menu")
+
+# Scroll to elements
+await session.act(input="scroll to the footer")
+```
+
+## Error Handling
+
+Always wrap your automation in try-finally blocks to ensure cleanup:
+
+```python
+try:
+    await session.navigate(url="https://example.com")
+    
+    act_stream = await session.act(
+        input="click the login button",
+        stream_response=True,
+        x_stream_response="true",
+    )
+    
+    async for event in act_stream:
+        if event.data.status == "error":
+            print(f"Error occurred: {event.data.error}")
+            
+except Exception as e:
+    print(f"Automation failed: {e}")
+    
+finally:
+    await session.end()
+```
+
+## Best Practices
+
+<Tip>
+**Use descriptive instructions**: The more specific your instruction, the more reliable the action. Instead of "click button", use "click the blue Submit button in the form".
+</Tip>
+
+<Warning>
+**Always end sessions**: Call `session.end()` to clean up browser resources, especially when running multiple automations.
+</Warning>
+
+<Note>
+**Streaming vs. Non-streaming**: Use streaming (`stream_response=True`) for real-time feedback and better debugging. For production, you can omit streaming for simpler code.
+</Note>
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Playwright Integration" icon="theater-masks" href="/examples/playwright-integration">
+    Learn how to integrate Stagehand with Playwright for advanced control
+  </Card>
+  <Card title="Data Extraction" icon="database" href="/examples/data-extraction">
+    Extract structured data from web pages
+  </Card>
+  <Card title="Multi-Step Workflows" icon="list-check" href="/examples/multi-step-workflows">
+    Build complex automation workflows
+  </Card>
+  <Card title="API Reference" icon="code" href="/api/sessions/act">
+    Complete act() method documentation
+  </Card>
+</CardGroup>

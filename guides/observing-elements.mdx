@@ -1,0 +1,178 @@
+---
+title: Observing Elements
+description: Find actionable elements on pages using natural language instructions
+---
+
+The `observe()` method identifies interactive elements on a web page that match your natural language instruction. It returns a list of possible actions without executing them, giving you full control over what happens next.
+
+## Basic Usage
+
+```python
+import asyncio
+from stagehand import AsyncStagehand
+
+async def main():
+    async with AsyncStagehand() as client:
+        session = await client.sessions.start(
+            model_name="anthropic/claude-sonnet-4-6"
+        )
+        
+        await session.navigate(url="https://news.ycombinator.com")
+        
+        # Find elements matching the instruction
+        response = await session.observe(
+            instruction="find the link to view comments for the top post"
+        )
+        
+        print(f"Found {len(response.data)} actions")
+        for action in response.data:
+            print(f"- {action.description}")
+        
+        await session.end()
+
+asyncio.run(main())
+```
+
+## Streaming Responses
+
+For real-time feedback during observation, enable streaming:
+
+```python
+async def observe_with_streaming():
+    async with AsyncStagehand() as client:
+        session = await client.sessions.start(
+            model_name="anthropic/claude-sonnet-4-6"
+        )
+        
+        await session.navigate(url="https://example.com")
+        
+        stream = await session.observe(
+            instruction="find all navigation links",
+            stream_response=True,
+            x_stream_response="true"
+        )
+        
+        results = None
+        async for event in stream:
+            if event.type == "log":
+                print(f"[LOG] {event.data.message}")
+            elif event.type == "system":
+                print(f"[STATUS] {event.data.status}")
+                if event.data.status == "finished":
+                    results = event.data.result
+        
+        print(f"Found {len(results)} possible actions")
+        await session.end()
+```
+
+## Working with Actions
+
+The `observe()` method returns Action objects that can be passed directly to `act()`:
+
+```python
+async def observe_and_act():
+    async with AsyncStagehand() as client:
+        session = await client.sessions.start(
+            model_name="anthropic/claude-sonnet-4-6"
+        )
+        
+        await session.navigate(url="https://news.ycombinator.com")
+        
+        # Get available actions
+        observe_stream = await session.observe(
+            instruction="find the comments link for the top post",
+            stream_response=True,
+            x_stream_response="true"
+        )
+        
+        actions = None
+        async for event in observe_stream:
+            if event.data.status == "finished":
+                actions = event.data.result
+        
+        if actions and len(actions) > 0:
+            # Execute the first action
+            await session.act(
+                input=actions[0],  # Pass the Action object
+                stream_response=True,
+                x_stream_response="true"
+            )
+```
+
+## Options
+
+<ParamField path="instruction" type="string">
+  Natural language description of what actions to find on the page
+</ParamField>
+
+<ParamField path="frame_id" type="string">
+  Optional. Target a specific iframe by its ID
+</ParamField>
+
+<ParamField path="options" type="object">
+  Optional configuration:
+  - `model`: Model configuration or model name string
+  - `timeout`: Timeout in milliseconds for the observation
+</ParamField>
+
+<ParamField path="stream_response" type="boolean" default="false">
+  Enable SSE streaming for real-time updates
+</ParamField>
+
+<ParamField path="x_stream_response" type="string">
+  Set to `"true"` to enable server-side streaming (required with `stream_response=True`)
+</ParamField>
+
+## Return Value
+
+Without streaming, returns `SessionObserveResponse` containing:
+
+```python
+response.data  # List of Action objects
+response.success  # Boolean indicating success
+```
+
+With streaming enabled, returns an async iterator of `StreamEvent` objects with:
+- `event.type`: Either `"log"` or `"system"`
+- `event.data.status`: Current status (`"running"`, `"finished"`, `"error"`)
+- `event.data.result`: Final list of actions when status is `"finished"`
+- `event.data.message`: Log messages for debugging
+
+## Best Practices
+
+<Tip>
+Use specific instructions for better results. Instead of "find buttons", try "find the submit button for the contact form".
+</Tip>
+
+<Warning>
+Observe identifies elements but doesn't interact with them. Use `act()` to perform the actual interaction.
+</Warning>
+
+## Common Use Cases
+
+### Preview Before Acting
+
+```python
+# See what actions are available before executing
+observe_result = await session.observe(
+    instruction="find all login-related buttons"
+)
+
+for action in observe_result.data:
+    print(f"Available: {action.description}")
+    # User can review and choose which action to execute
+```
+
+### Conditional Interactions
+
+```python
+# Check if an element exists before trying to interact
+result = await session.observe(
+    instruction="find the cookie consent banner"
+)
+
+if result.data and len(result.data) > 0:
+    await session.act(input="click accept on the cookie banner")
+else:
+    print("No cookie banner found")
+```

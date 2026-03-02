@@ -1,97 +1,152 @@
 ---
-title: "Introduction"
-description: "Welcome to the new home for your documentation"
+title: Stagehand Python SDK
+description: The AI Browser Automation Framework - Control web browsers with natural language and code
+mode: custom
 ---
 
-## Setting up
+<div className="relative bg-gradient-to-br from-slate-50 to-slate-100 dark:from-slate-900 dark:to-slate-800 rounded-2xl p-8 md:p-12 lg:p-16 mb-12 overflow-hidden">
+  <div className="absolute inset-0 bg-gradient-to-br from-[#f8ca40]/10 to-transparent dark:from-[#f8ca40]/5"></div>
+  <div className="relative z-10 max-w-4xl">
+    <h1 className="text-4xl md:text-5xl lg:text-6xl font-bold text-slate-900 dark:text-white mb-6">
+      Stagehand Python SDK
+    </h1>
+    <p className="text-lg md:text-xl text-slate-700 dark:text-slate-300 mb-8 max-w-2xl">
+      The AI Browser Automation Framework - Python SDK for controlling web browsers with natural language and code
+    </p>
+    <div className="flex flex-col sm:flex-row gap-4">
+      <a 
+        href="/quickstart" 
+        className="inline-flex items-center justify-center px-6 py-3 rounded-lg text-base font-semibold text-slate-900 bg-[#f8ca40] hover:bg-[#e6b82e] transition-colors shadow-lg"
+      >
+        Get Started
+      </a>
+      <a 
+        href="/api/client/stagehand" 
+        className="inline-flex items-center justify-center px-6 py-3 rounded-lg text-base font-semibold text-slate-700 dark:text-slate-300 bg-white dark:bg-slate-800 hover:bg-slate-50 dark:hover:bg-slate-700 transition-colors shadow-lg border border-slate-200 dark:border-slate-700"
+      >
+        API Reference
+      </a>
+    </div>
+  </div>
+</div>
 
-Get your documentation site up and running in minutes.
+## Why Stagehand?
 
-<Card
-  title="Start here"
-  icon="rocket"
-  href="/quickstart"
-  horizontal
->
-  Follow our three step quickstart guide.
-</Card>
+<div className="grid md:grid-cols-2 gap-6 mb-12">
+  <div className="p-6 rounded-xl bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700">
+    <div className="text-2xl mb-3">🎯</div>
+    <h3 className="text-xl font-semibold mb-2 text-slate-900 dark:text-white">AI-Powered Flexibility</h3>
+    <p className="text-slate-600 dark:text-slate-400">
+      Choose when to write code vs. natural language. Use AI for unfamiliar pages, use code when you know exactly what you want to do.
+    </p>
+  </div>
+  
+  <div className="p-6 rounded-xl bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700">
+    <div className="text-2xl mb-3">🔄</div>
+    <h3 className="text-xl font-semibold mb-2 text-slate-900 dark:text-white">Self-Healing Workflows</h3>
+    <p className="text-slate-600 dark:text-slate-400">
+      Auto-caching remembers previous actions, runs without LLM inference, and knows when to involve AI when websites change.
+    </p>
+  </div>
+  
+  <div className="p-6 rounded-xl bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700">
+    <div className="text-2xl mb-3">⚡</div>
+    <h3 className="text-xl font-semibold mb-2 text-slate-900 dark:text-white">Production Ready</h3>
+    <p className="text-slate-600 dark:text-slate-400">
+      Comprehensive error handling, automatic retries, streaming support, and both sync and async APIs for maximum reliability.
+    </p>
+  </div>
+  
+  <div className="p-6 rounded-xl bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700">
+    <div className="text-2xl mb-3">🎭</div>
+    <h3 className="text-xl font-semibold mb-2 text-slate-900 dark:text-white">Playwright Integration</h3>
+    <p className="text-slate-600 dark:text-slate-400">
+      Bring your own browser with Playwright integration. Full control over browser context, pages, and automation workflows.
+    </p>
+  </div>
+</div>
 
-## Make it yours
+## Get Started
 
-Design a docs site that looks great and empowers your users.
-
-<Columns cols={2}>
-  <Card
-    title="Edit locally"
-    icon="pen-to-square"
-    href="/development"
-  >
-    Edit your docs locally and preview them in real time.
+<CardGroup cols={2}>
+  <Card title="Quickstart" icon="rocket" href="/quickstart">
+    Get up and running with Stagehand in minutes
   </Card>
-  <Card
-    title="Customize your site"
-    icon="palette"
-    href="/essentials/settings"
-  >
-    Customize the design and colors of your site to match your brand.
+  <Card title="Installation" icon="download" href="/installation">
+    Install the SDK and configure your environment
   </Card>
-    <Card
-    title="Set up navigation"
-    icon="map"
-    href="/essentials/navigation"
-  >
-    Organize your docs to help users find what they need and succeed with your product.
+  <Card title="Sessions" icon="browser" href="/concepts/sessions">
+    Learn about session-based browser control
   </Card>
-  <Card
-    title="API documentation"
-    icon="terminal"
-    href="/api-reference/introduction"
-  >
-    Auto-generate API documentation from OpenAPI specifications.
+  <Card title="Actions" icon="hand-pointer" href="/concepts/actions">
+    Understand observe, act, extract, and execute operations
   </Card>
-</Columns>
+</CardGroup>
 
-## Create beautiful pages
+## Core Concepts
 
-Everything you need to create world-class documentation.
+<CardGroup cols={2}>
+  <Card title="Client Configuration" icon="gear" href="/concepts/client-configuration">
+    Configure the Stagehand client for your needs
+  </Card>
+  <Card title="Async Support" icon="arrows-rotate" href="/concepts/async-support">
+    Use AsyncStagehand for high-performance workflows
+  </Card>
+  <Card title="Streaming Responses" icon="stream" href="/guides/streaming-responses">
+    Handle real-time streaming with Server-Sent Events
+  </Card>
+  <Card title="Error Handling" icon="shield-check" href="/guides/error-handling">
+    Robust error handling and recovery patterns
+  </Card>
+</CardGroup>
 
-<Columns cols={2}>
-  <Card
-    title="Write with MDX"
-    icon="pen-fancy"
-    href="/essentials/markdown"
-  >
-    Use MDX to style your docs pages.
-  </Card>
-  <Card
-    title="Code samples"
-    icon="code"
-    href="/essentials/code"
-  >
-    Add sample code to demonstrate how to use your product.
-  </Card>
-  <Card
-    title="Images"
-    icon="image"
-    href="/essentials/images"
-  >
-    Display images and other media.
-  </Card>
-  <Card
-    title="Reusable snippets"
-    icon="recycle"
-    href="/essentials/reusable-snippets"
-  >
-    Write once and reuse across your docs.
-  </Card>
-</Columns>
+## Guides
 
-## Need inspiration?
+<CardGroup cols={2}>
+  <Card title="Observing Elements" icon="eye" href="/guides/observing-elements">
+    Find elements on pages with natural language
+  </Card>
+  <Card title="Acting on Pages" icon="hand-pointer" href="/guides/acting-on-pages">
+    Perform actions like clicks and form fills
+  </Card>
+  <Card title="Extracting Data" icon="database" href="/guides/extracting-data">
+    Extract structured data from web pages
+  </Card>
+  <Card title="Agent Execution" icon="robot" href="/guides/agent-execution">
+    Run multi-step automation workflows
+  </Card>
+</CardGroup>
 
-<Card
-  title="See complete examples"
-  icon="stars"
-  href="https://mintlify.com/customers"
->
-  Browse our showcase of exceptional documentation sites.
-</Card>
+## Examples
+
+<CardGroup cols={2}>
+  <Card title="Basic Automation" icon="bolt" href="/examples/basic-automation">
+    Simple automation examples to get started
+  </Card>
+  <Card title="Playwright Integration" icon="theater-masks" href="/examples/playwright-integration">
+    Integrate with Playwright for advanced control
+  </Card>
+  <Card title="Data Extraction" icon="table" href="/examples/data-extraction">
+    Real-world data extraction patterns
+  </Card>
+  <Card title="Multi-Step Workflows" icon="list-check" href="/examples/multi-step-workflows">
+    Complex automation workflows
+  </Card>
+</CardGroup>
+
+## API Reference
+
+<CardGroup cols={2}>
+  <Card title="Stagehand Client" icon="code" href="/api/client/stagehand">
+    Synchronous client API reference
+  </Card>
+  <Card title="AsyncStagehand Client" icon="code" href="/api/client/async-stagehand">
+    Asynchronous client API reference
+  </Card>
+  <Card title="Session Methods" icon="browser" href="/api/sessions/start">
+    Complete session API documentation
+  </Card>
+  <Card title="Exception Types" icon="triangle-exclamation" href="/api/exceptions/error-types">
+    Error types and exception handling
+  </Card>
+</CardGroup>

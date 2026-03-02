@@ -1,0 +1,253 @@
+---
+title: "Custom HTTP Client"
+description: "Configure custom httpx clients with proxies, transports, and advanced settings"
+---
+
+You can customize the underlying HTTP client to configure proxies, custom transports, and other advanced httpx settings.
+
+## Default HTTP Clients
+
+Stagehand provides default HTTP client classes that use the SDK's default settings:
+
+- `DefaultHttpxClient` - Synchronous httpx client
+- `DefaultAsyncHttpxClient` - Async httpx client (default)
+- `DefaultAioHttpClient` - Async client using aiohttp backend
+
+<Info>
+Overriding `http_client` with a plain `httpx.Client` instance will use httpx's defaults, not Stagehand's. Use the `Default*Client` classes to retain Stagehand's defaults.
+</Info>
+
+## Basic Configuration
+
+### Synchronous Client
+
+```python
+import httpx
+from stagehand import Stagehand, DefaultHttpxClient
+
+client = Stagehand(
+    http_client=DefaultHttpxClient(
+        timeout=30.0,
+        limits=httpx.Limits(max_connections=100, max_keepalive_connections=20),
+    ),
+)
+```
+
+### Async Client
+
+```python
+import httpx
+from stagehand import AsyncStagehand, DefaultAsyncHttpxClient
+
+client = AsyncStagehand(
+    http_client=DefaultAsyncHttpxClient(
+        timeout=30.0,
+        limits=httpx.Limits(max_connections=100, max_keepalive_connections=20),
+    ),
+)
+```
+
+## Proxy Configuration
+
+Configure HTTP proxies for all requests:
+
+```python
+import httpx
+from stagehand import Stagehand, DefaultHttpxClient
+
+client = Stagehand(
+    http_client=DefaultHttpxClient(
+        proxy="http://my.proxy.example.com:8080",
+    ),
+)
+```
+
+### Authenticated Proxies
+
+```python
+from stagehand import Stagehand, DefaultHttpxClient
+
+client = Stagehand(
+    http_client=DefaultHttpxClient(
+        proxy="http://username:password@proxy.example.com:8080",
+    ),
+)
+```
+
+### SOCKS Proxies
+
+```python
+import httpx
+from stagehand import Stagehand, DefaultHttpxClient
+
+# Requires: pip install httpx[socks]
+client = Stagehand(
+    http_client=DefaultHttpxClient(
+        proxy="socks5://proxy.example.com:1080",
+    ),
+)
+```
+
+## Custom Transports
+
+Use custom transports for advanced networking control:
+
+```python
+import httpx
+from stagehand import Stagehand, DefaultHttpxClient
+
+client = Stagehand(
+    base_url="http://my.test.server.example.com:8083",
+    http_client=DefaultHttpxClient(
+        transport=httpx.HTTPTransport(
+            local_address="0.0.0.0",
+            retries=3,
+        ),
+    ),
+)
+```
+
+### Custom SSL Context
+
+```python
+import ssl
+import httpx
+from stagehand import AsyncStagehand, DefaultAsyncHttpxClient
+
+# Create custom SSL context
+ssl_context = ssl.create_default_context()
+ssl_context.load_verify_locations(cafile="/path/to/ca-bundle.crt")
+
+client = AsyncStagehand(
+    http_client=DefaultAsyncHttpxClient(
+        verify=ssl_context,
+    ),
+)
+```
+
+## Using aiohttp Backend
+
+For improved async concurrency performance, use the aiohttp backend:
+
+### Installation
+
+```bash
+pip install stagehand[aiohttp]
+# or
+uv pip install stagehand[aiohttp]
+```
+
+### Usage
+
+```python
+import asyncio
+from stagehand import AsyncStagehand, DefaultAioHttpClient
+
+
+async def main() -> None:
+    async with AsyncStagehand(
+        http_client=DefaultAioHttpClient()
+    ) as client:
+        session = await client.sessions.start(
+            model_name="anthropic/claude-sonnet-4-6"
+        )
+        response = await session.act(input="click the first link")
+        print(response.data)
+
+
+asyncio.run(main())
+```
+
+<Note>
+The aiohttp backend uses `httpx-aiohttp` adapter under the hood, providing the same httpx API while using aiohttp's connection pooling.
+</Note>
+
+## Per-Request Customization
+
+Override the HTTP client for specific requests using `with_options()`:
+
+```python
+from stagehand import Stagehand, DefaultHttpxClient
+
+client = Stagehand()
+
+# Use a different HTTP client for this request
+response = client.with_options(
+    http_client=DefaultHttpxClient(
+        proxy="http://special-proxy.example.com:8080",
+        timeout=60.0,
+    )
+).sessions.start(model_name="anthropic/claude-sonnet-4-6")
+```
+
+## Advanced Examples
+
+### Connection Pooling
+
+```python
+import httpx
+from stagehand import AsyncStagehand, DefaultAsyncHttpxClient
+
+client = AsyncStagehand(
+    http_client=DefaultAsyncHttpxClient(
+        limits=httpx.Limits(
+            max_connections=200,
+            max_keepalive_connections=50,
+            keepalive_expiry=30.0,
+        ),
+    ),
+)
+```
+
+### Custom Event Hooks
+
+```python
+import httpx
+from stagehand import Stagehand, DefaultHttpxClient
+
+def log_request(request: httpx.Request) -> None:
+    print(f"Request: {request.method} {request.url}")
+
+def log_response(response: httpx.Response) -> None:
+    print(f"Response: {response.status_code}")
+
+client = Stagehand(
+    http_client=DefaultHttpxClient(
+        event_hooks={
+            "request": [log_request],
+            "response": [log_response],
+        },
+    ),
+)
+```
+
+### Multiple Proxies
+
+```python
+import httpx
+from stagehand import AsyncStagehand, DefaultAsyncHttpxClient
+
+client = AsyncStagehand(
+    http_client=DefaultAsyncHttpxClient(
+        mounts={
+            "http://": httpx.AsyncHTTPTransport(
+                proxy="http://proxy1.example.com:8080"
+            ),
+            "https://": httpx.AsyncHTTPTransport(
+                proxy="https://proxy2.example.com:8443"
+            ),
+        },
+    ),
+)
+```
+
+## Default Settings
+
+The `Default*Client` classes provide these defaults:
+
+- **Timeout**: 60 seconds (configurable via `timeout` parameter)
+- **Connection Limits**: 100 max connections, 20 keepalive connections
+- **Follow Redirects**: Enabled
+- **Retries**: Handled by Stagehand (2 retries by default)
+
+See the [httpx documentation](https://www.python-httpx.org/advanced/clients/) for more advanced configuration options.

@@ -1,0 +1,534 @@
+---
+title: "Multi-Step Workflows"
+description: "Build complex automation workflows with Stagehand's agent execution and chained operations"
+---
+
+## Overview
+
+Stagehand excels at multi-step workflows that combine navigation, observation, actions, and data extraction. You can build complex automations either by chaining individual operations or using the autonomous `execute()` agent.
+
+## Autonomous Agent with Execute
+
+The `execute()` method runs an autonomous agent that can perform multi-step tasks with minimal guidance:
+
+```python
+from stagehand import AsyncStagehand
+import asyncio
+import os
+
+async def main():
+    async with AsyncStagehand(
+        browserbase_api_key=os.environ.get("BROWSERBASE_API_KEY"),
+        browserbase_project_id=os.environ.get("BROWSERBASE_PROJECT_ID"),
+        model_api_key=os.environ.get("MODEL_API_KEY"),
+    ) as client:
+        session = await client.sessions.start(
+            model_name="anthropic/claude-sonnet-4-6",
+        )
+
+        try:
+            # Navigate to starting page
+            await session.navigate(
+                url="https://news.ycombinator.com",
+                options={"wait_until": "domcontentloaded"},
+            )
+
+            # Let the agent perform multiple steps autonomously
+            stream = await session.execute(
+                agent_config={
+                    "model": "anthropic/claude-sonnet-4-6"
+                },
+                execute_options={
+                    "instruction": "Go to Hacker News and return the titles of the first 3 articles.",
+                    "max_steps": 5,
+                },
+                stream_response=True,
+                x_stream_response="true",
+            )
+
+            # Process streaming response
+            async for event in stream:
+                if event.type == "log":
+                    print(f"[log] {event.data.message}")
+                elif event.data.status == "finished":
+                    result = event.data.result
+                    message = result.get("message") if isinstance(result, dict) else result
+                    print(f"Agent completed: {message}")
+
+        finally:
+            await session.end()
+
+asyncio.run(main())
+```
+
+## Complete Multi-Step Workflow
+
+Here's a full example from `full_example.py` that demonstrates all operations in sequence:
+
+```python
+import os
+import json
+from stagehand import AsyncStagehand
+
+async def stream_to_result(stream, label: str):
+    """Helper to process streaming events."""
+    result_payload = None
+    async for event in stream:
+        if event.type == "log":
+            print(f"[{label}][log] {event.data.message}")
+            continue
+
+        status = event.data.status
+        print(f"[{label}][system] status={status}")
+        if status == "finished":
+            result_payload = event.data.result
+        elif status == "error":
+            error_message = event.data.error or "unknown error"
+            raise RuntimeError(f"{label} stream reported error: {error_message}")
+
+    return result_payload
+
+async def main():
+    async with AsyncStagehand(
+        browserbase_api_key=os.environ.get("BROWSERBASE_API_KEY"),
+        browserbase_project_id=os.environ.get("BROWSERBASE_PROJECT_ID"),
+        model_api_key=os.environ.get("MODEL_API_KEY"),
+    ) as client:
+        # Step 1: Start session
+        session = await client.sessions.start(
+            model_name="anthropic/claude-sonnet-4-6",
+        )
+        print(f"Session started: {session.id}")
+
+        try:
+            # Step 2: Navigate to page
+            await session.navigate(
+                url="https://news.ycombinator.com",
+            )
+            print("Navigated to Hacker News")
+
+            # Step 3: Observe - find possible actions
+            observe_stream = await session.observe(
+                instruction="find the link to view comments for the top post",
+                stream_response=True,
+                x_stream_response="true",
+            )
+            results = await stream_to_result(observe_stream, "observe")
+            results = results if isinstance(results, list) else []
+            print(f"Found {len(results)} possible actions")
+
+            if not results:
+                print("No actions found")
+                return
+
+            # Step 4: Act - click the comments link
+            result = results[0]
+            print(f"Acting on: {result.description}")
+
+            act_stream = await session.act(
+                input=result,
+                stream_response=True,
+                x_stream_response="true",
+            )
+            act_result = await stream_to_result(act_stream, "act")
+            print(f"Act completed")
+
+            # Step 5: Extract - get structured data from the page
+            extract_stream = await session.extract(
+                instruction="extract the text of the top comment on this page",
+                schema={
+                    "type": "object",
+                    "properties": {
+                        "commentText": {
+                            "type": "string",
+                            "description": "The text content of the top comment"
+                        },
+                        "author": {
+                            "type": "string",
+                            "description": "The username of the comment author"
+                        },
+                    },
+                    "required": ["commentText"],
+                },
+                stream_response=True,
+                x_stream_response="true",
+            )
+            extracted_result = await stream_to_result(extract_stream, "extract")
+            print(f"Extracted data: {extracted_result}")
+
+            # Step 6: Agent Execute - autonomous multi-step task
+            author = (
+                extracted_result.get("author", "unknown")
+                if isinstance(extracted_result, dict)
+                else "unknown"
+            )
+            print(f"Looking up profile for author: {author}")
+
+            execute_stream = await session.execute(
+                execute_options={
+                    "instruction": (
+                        f"Find any personal website, GitHub, LinkedIn, or other profile URL for the Hacker News user '{author}'. "
+                        f"Click on their username to go to their profile page and look for any links they have shared. "
+                        f"Use Google Search with their username if you don't find direct links."
+                    ),
+                    "max_steps": 15,
+                },
+                agent_config={
+                    "model": {
+                        "model_name": "anthropic/claude-opus-4-6",
+                        "api_key": os.environ.get("MODEL_API_KEY"),
+                    },
+                    "cua": False,
+                },
+                stream_response=True,
+                x_stream_response="true",
+                timeout=300.0,  # 5 minutes for long-running agent tasks
+            )
+
+            execute_result = await stream_to_result(execute_stream, "execute")
+            execute_message = (
+                execute_result.get("message")
+                if isinstance(execute_result, dict)
+                else execute_result
+            )
+            execute_actions = (
+                execute_result.get("actions")
+                if isinstance(execute_result, dict)
+                else None
+            )
+            print(f"Agent completed: {execute_message}")
+            print(f"Agent actions taken: {len(execute_actions or [])}")
+
+        finally:
+            # Step 7: Clean up
+            await session.end()
+            print("Session ended")
+```
+
+## Execute Configuration
+
+The `execute()` method accepts detailed configuration:
+
+### Execute Options
+
+```python
+execute_options = {
+    "instruction": "Your high-level task description",
+    "max_steps": 10,  # Maximum number of steps the agent can take
+}
+```
+
+### Agent Configuration
+
+```python
+agent_config = {
+    "model": {
+        "model_name": "anthropic/claude-opus-4-6",  # More capable model for complex tasks
+        "api_key": os.environ.get("MODEL_API_KEY"),
+    },
+    "cua": False,  # Computer Use Agent mode
+}
+
+# Or use a simple model string
+agent_config = {"model": "anthropic/claude-opus-4-6"}
+```
+
+### Timeout
+
+Agent execution can take a while, so set appropriate timeouts:
+
+```python
+stream = await session.execute(
+    execute_options={...},
+    agent_config={...},
+    stream_response=True,
+    x_stream_response="true",
+    timeout=300.0,  # 5 minutes
+)
+```
+
+## Chained Operations Workflow
+
+For more control, chain individual operations:
+
+```python
+async def scrape_product_details(session, product_url: str):
+    """Multi-step workflow to scrape product details."""
+    
+    # Step 1: Navigate to product page
+    await session.navigate(url=product_url)
+    
+    # Step 2: Extract basic product info
+    extract_stream = await session.extract(
+        instruction="extract product name, price, and availability",
+        schema={
+            "type": "object",
+            "properties": {
+                "name": {"type": "string"},
+                "price": {"type": "number"},
+                "available": {"type": "boolean"},
+            },
+        },
+        stream_response=True,
+        x_stream_response="true",
+    )
+    product_info = await stream_to_result(extract_stream, "extract")
+    
+    # Step 3: Click to reviews tab
+    act_stream = await session.act(
+        input="click the Reviews tab",
+        stream_response=True,
+        x_stream_response="true",
+    )
+    await stream_to_result(act_stream, "act")
+    
+    # Step 4: Extract reviews
+    reviews_stream = await session.extract(
+        instruction="extract all visible reviews with rating, author, and text",
+        schema={
+            "type": "array",
+            "items": {
+                "type": "object",
+                "properties": {
+                    "rating": {"type": "number"},
+                    "author": {"type": "string"},
+                    "text": {"type": "string"},
+                },
+            },
+        },
+        stream_response=True,
+        x_stream_response="true",
+    )
+    reviews = await stream_to_result(reviews_stream, "extract")
+    
+    return {
+        "product": product_info,
+        "reviews": reviews,
+    }
+```
+
+## Error Recovery in Workflows
+
+Implement error recovery for robust workflows:
+
+```python
+async def robust_workflow(session):
+    max_retries = 3
+    
+    for attempt in range(max_retries):
+        try:
+            # Navigate
+            await session.navigate(url="https://example.com")
+            
+            # Try to perform action
+            act_stream = await session.act(
+                input="click the login button",
+                stream_response=True,
+                x_stream_response="true",
+            )
+            
+            async for event in act_stream:
+                if event.data.status == "error":
+                    if attempt < max_retries - 1:
+                        print(f"Attempt {attempt + 1} failed, retrying...")
+                        break
+                    else:
+                        raise RuntimeError(f"Failed after {max_retries} attempts")
+                elif event.data.status == "finished":
+                    print("Action succeeded")
+                    return event.data.result
+                    
+        except Exception as e:
+            if attempt < max_retries - 1:
+                print(f"Error on attempt {attempt + 1}: {e}")
+                await asyncio.sleep(2)  # Wait before retry
+            else:
+                raise
+```
+
+## Conditional Logic
+
+Build workflows with conditional branching:
+
+```python
+async def conditional_workflow(session):
+    # Extract page state
+    state_stream = await session.extract(
+        instruction="check if user is logged in",
+        schema={
+            "type": "object",
+            "properties": {
+                "isLoggedIn": {"type": "boolean"},
+            },
+        },
+        stream_response=True,
+        x_stream_response="true",
+    )
+    state = await stream_to_result(state_stream, "extract")
+    
+    if not state.get("isLoggedIn"):
+        # Perform login
+        await session.act(
+            input="click the login button",
+            stream_response=True,
+            x_stream_response="true",
+        )
+        
+        await session.act(
+            input="type 'user@example.com' into the email field",
+            stream_response=True,
+            x_stream_response="true",
+        )
+        
+        await session.act(
+            input="type 'password123' into the password field",
+            stream_response=True,
+            x_stream_response="true",
+        )
+        
+        await session.act(
+            input="click the submit button",
+            stream_response=True,
+            x_stream_response="true",
+        )
+    
+    # Continue with main workflow
+    await session.navigate(url="https://example.com/dashboard")
+    # ...
+```
+
+## Looping Through Pages
+
+Automate pagination:
+
+```python
+async def scrape_all_pages(session, max_pages: int = 10):
+    all_items = []
+    
+    for page_num in range(1, max_pages + 1):
+        print(f"Scraping page {page_num}...")
+        
+        # Extract items from current page
+        extract_stream = await session.extract(
+            instruction="extract all product names and prices",
+            schema={
+                "type": "array",
+                "items": {
+                    "type": "object",
+                    "properties": {
+                        "name": {"type": "string"},
+                        "price": {"type": "number"},
+                    },
+                },
+            },
+            stream_response=True,
+            x_stream_response="true",
+        )
+        items = await stream_to_result(extract_stream, "extract")
+        all_items.extend(items or [])
+        
+        # Check if there's a next page
+        has_next_stream = await session.extract(
+            instruction="check if there is a next page button",
+            schema={
+                "type": "object",
+                "properties": {
+                    "hasNext": {"type": "boolean"},
+                },
+            },
+            stream_response=True,
+            x_stream_response="true",
+        )
+        has_next = await stream_to_result(has_next_stream, "extract")
+        
+        if not has_next.get("hasNext"):
+            print("No more pages")
+            break
+        
+        # Go to next page
+        act_stream = await session.act(
+            input="click the next page button",
+            stream_response=True,
+            x_stream_response="true",
+        )
+        await stream_to_result(act_stream, "act")
+    
+    return all_items
+```
+
+## Best Practices
+
+<Tip>
+**Use execute() for complex tasks**: When you have a high-level goal that requires multiple steps and decision-making, use the `execute()` agent rather than trying to script every step.
+</Tip>
+
+<Tip>
+**Chain operations for predictable workflows**: When you know exactly what steps are needed, chaining individual operations gives you more control and better error handling.
+</Tip>
+
+<Warning>
+**Set appropriate timeouts**: Agent execution can take minutes for complex tasks. Set `timeout` values that match your use case.
+</Warning>
+
+<Note>
+**Monitor agent actions**: The `execute()` result includes an `actions` array showing what steps the agent took, which is helpful for debugging and optimization.
+</Note>
+
+## Common Patterns
+
+### Research and Report
+
+```python
+# Let the agent research a topic and compile findings
+execute_stream = await session.execute(
+    execute_options={
+        "instruction": "Research the top 5 competitors for product X and compile their pricing into a summary",
+        "max_steps": 20,
+    },
+    agent_config={"model": "anthropic/claude-opus-4-6"},
+    timeout=600.0,  # 10 minutes
+)
+```
+
+### Form Filling
+
+```python
+# Multi-step form filling
+await session.navigate(url="https://example.com/signup")
+
+for field, value in form_data.items():
+    await session.act(
+        input=f"type '{value}' into the {field} field",
+    )
+
+await session.act(input="click the submit button")
+```
+
+### Monitoring and Alerts
+
+```python
+# Check for changes periodically
+while True:
+    data = await extract_current_state(session)
+    if data_changed(data, previous_data):
+        send_alert(data)
+    previous_data = data
+    await asyncio.sleep(300)  # Check every 5 minutes
+```
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Basic Automation" icon="bolt" href="/examples/basic-automation">
+    Learn fundamental automation patterns
+  </Card>
+  <Card title="Data Extraction" icon="database" href="/examples/data-extraction">
+    Master structured data extraction
+  </Card>
+  <Card title="Playwright Integration" icon="theater-masks" href="/examples/playwright-integration">
+    Combine with Playwright for advanced workflows
+  </Card>
+  <Card title="API Reference" icon="code" href="/api/sessions/execute">
+    Complete execute() method documentation
+  </Card>
+</CardGroup>

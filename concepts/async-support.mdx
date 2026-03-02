@@ -1,0 +1,519 @@
+---
+title: Async Support
+description: Using AsyncStagehand for concurrent browser automation with async/await patterns
+---
+
+Stagehand is built with async/await as a first-class citizen. The `AsyncStagehand` client provides full asynchronous support for high-performance, concurrent browser automation.
+
+## Why Async?
+
+Asynchronous programming allows you to:
+
+- Run multiple browser sessions concurrently
+- Perform I/O operations without blocking
+- Scale to handle many automation tasks simultaneously
+- Integrate seamlessly with async frameworks (FastAPI, aiohttp, etc.)
+
+## AsyncStagehand vs Stagehand
+
+Stagehand provides both sync and async clients:
+
+- **`AsyncStagehand`**: Async client with `async/await` (recommended)
+- **`Stagehand`**: Synchronous client for simple scripts
+
+```python
+# Async (recommended)
+from stagehand import AsyncStagehand
+
+async with AsyncStagehand() as client:
+    session = await client.sessions.start(...)
+    await session.navigate(url="https://example.com")
+```
+
+```python
+# Sync
+from stagehand import Stagehand
+
+with Stagehand() as client:
+    session = client.sessions.start(...)
+    session.navigate(url="https://example.com")
+```
+
+<Note>
+  This documentation focuses on `AsyncStagehand` as it's the recommended approach for most use cases.
+</Note>
+
+## Basic Async Usage
+
+### Simple Example
+
+```python
+import asyncio
+from stagehand import AsyncStagehand
+
+async def main():
+    async with AsyncStagehand() as client:
+        session = await client.sessions.start(
+            model_name="anthropic/claude-sonnet-4-6"
+        )
+        
+        await session.navigate(url="https://example.com")
+        
+        result = await session.act(
+            input="click the first link"
+        )
+        
+        print(f"Action completed: {result.data.message}")
+        
+        await session.end()
+
+asyncio.run(main())
+```
+
+### With Error Handling
+
+```python
+import asyncio
+import stagehand
+from stagehand import AsyncStagehand
+
+async def main():
+    async with AsyncStagehand() as client:
+        try:
+            session = await client.sessions.start(
+                model_name="anthropic/claude-sonnet-4-6"
+            )
+            
+            await session.navigate(url="https://example.com")
+            
+        except stagehand.APIConnectionError as e:
+            print(f"Connection error: {e}")
+        except stagehand.RateLimitError:
+            print("Rate limit exceeded")
+        except stagehand.APIStatusError as e:
+            print(f"API error: {e.status_code} - {e.response}")
+        finally:
+            if session:
+                await session.end()
+
+asyncio.run(main())
+```
+
+## Concurrent Sessions
+
+Run multiple browser sessions in parallel:
+
+```python
+import asyncio
+from stagehand import AsyncStagehand
+
+async def scrape_url(client: AsyncStagehand, url: str):
+    """Scrape a single URL"""
+    session = await client.sessions.start(
+        model_name="anthropic/claude-sonnet-4-6"
+    )
+    
+    try:
+        await session.navigate(url=url)
+        
+        data = await session.extract(
+            instruction="extract the page title and description",
+            schema={
+                "type": "object",
+                "properties": {
+                    "title": {"type": "string"},
+                    "description": {"type": "string"}
+                }
+            }
+        )
+        
+        return data
+    finally:
+        await session.end()
+
+async def main():
+    urls = [
+        "https://example.com",
+        "https://example.org",
+        "https://example.net"
+    ]
+    
+    async with AsyncStagehand() as client:
+        # Run all scraping tasks concurrently
+        tasks = [scrape_url(client, url) for url in urls]
+        results = await asyncio.gather(*tasks)
+        
+        for url, data in zip(urls, results):
+            print(f"{url}: {data['title']}")
+
+asyncio.run(main())
+```
+
+## Streaming Responses
+
+Streaming is particularly powerful with async:
+
+```python
+import asyncio
+from stagehand import AsyncStagehand
+
+async def main():
+    async with AsyncStagehand() as client:
+        session = await client.sessions.start(
+            model_name="anthropic/claude-sonnet-4-6"
+        )
+        
+        await session.navigate(url="https://example.com")
+        
+        # Stream the action response
+        act_stream = await session.act(
+            input="click the login button",
+            stream_response=True,
+            x_stream_response="true"
+        )
+        
+        async for event in act_stream:
+            if event.type == "log":
+                print(f"[LOG] {event.data.message}")
+            elif event.type == "system":
+                print(f"[SYSTEM] status={event.data.status}")
+                
+                if event.data.status == "finished":
+                    print(f"Result: {event.data.result}")
+                elif event.data.status == "error":
+                    print(f"Error: {event.data.error}")
+        
+        await session.end()
+
+asyncio.run(main())
+```
+
+## Integration with aiohttp
+
+For better concurrent performance, use aiohttp as the HTTP client:
+
+### Installation
+
+```bash
+pip install stagehand[aiohttp]
+```
+
+### Usage
+
+```python
+import asyncio
+from stagehand import AsyncStagehand, DefaultAioHttpClient
+
+async def main():
+    # Use aiohttp for HTTP requests
+    async with AsyncStagehand(
+        http_client=DefaultAioHttpClient()
+    ) as client:
+        session = await client.sessions.start(
+            model_name="anthropic/claude-sonnet-4-6"
+        )
+        
+        await session.navigate(url="https://example.com")
+        await session.act(input="click the first link")
+        
+        await session.end()
+
+asyncio.run(main())
+```
+
+<Note>
+  aiohttp provides better performance for concurrent requests compared to the default httpx client.
+</Note>
+
+## Integration with Async Frameworks
+
+### FastAPI
+
+```python
+from fastapi import FastAPI, HTTPException
+from stagehand import AsyncStagehand
+from contextlib import asynccontextmanager
+
+# Global client instance
+client = None
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    global client
+    # Startup: Create client
+    client = AsyncStagehand()
+    yield
+    # Shutdown: Close client
+    await client.close()
+
+app = FastAPI(lifespan=lifespan)
+
+@app.post("/scrape")
+async def scrape(url: str):
+    try:
+        session = await client.sessions.start(
+            model_name="anthropic/claude-sonnet-4-6"
+        )
+        
+        await session.navigate(url=url)
+        
+        data = await session.extract(
+            instruction="extract page title",
+            schema={
+                "type": "object",
+                "properties": {"title": {"type": "string"}}
+            }
+        )
+        
+        await session.end()
+        
+        return {"url": url, "title": data.get("title")}
+    
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+```
+
+### aiohttp Server
+
+```python
+from aiohttp import web
+from stagehand import AsyncStagehand, DefaultAioHttpClient
+
+async def handle_scrape(request):
+    url = request.query.get('url')
+    
+    if not url:
+        return web.json_response({'error': 'url parameter required'}, status=400)
+    
+    client = request.app['stagehand_client']
+    
+    session = await client.sessions.start(
+        model_name="anthropic/claude-sonnet-4-6"
+    )
+    
+    try:
+        await session.navigate(url=url)
+        
+        data = await session.extract(
+            instruction="extract page title",
+            schema={
+                "type": "object",
+                "properties": {"title": {"type": "string"}}
+            }
+        )
+        
+        return web.json_response({'title': data.get('title')})
+    
+    finally:
+        await session.end()
+
+async def init_app():
+    app = web.Application()
+    
+    # Create shared Stagehand client with aiohttp
+    app['stagehand_client'] = AsyncStagehand(
+        http_client=DefaultAioHttpClient()
+    )
+    
+    app.router.add_get('/scrape', handle_scrape)
+    
+    # Cleanup on shutdown
+    async def cleanup(app):
+        await app['stagehand_client'].close()
+    
+    app.on_cleanup.append(cleanup)
+    
+    return app
+
+if __name__ == '__main__':
+    web.run_app(init_app())
+```
+
+## Task Queue Integration
+
+### With Celery (using async tasks)
+
+```python
+from celery import Celery
+from stagehand import AsyncStagehand
+import asyncio
+
+app = Celery('tasks', broker='redis://localhost:6379')
+
+@app.task
+def scrape_url_task(url: str):
+    """Celery task that runs async Stagehand code"""
+    return asyncio.run(scrape_url(url))
+
+async def scrape_url(url: str):
+    async with AsyncStagehand() as client:
+        session = await client.sessions.start(
+            model_name="anthropic/claude-sonnet-4-6"
+        )
+        
+        try:
+            await session.navigate(url=url)
+            
+            data = await session.extract(
+                instruction="extract title and description",
+                schema={
+                    "type": "object",
+                    "properties": {
+                        "title": {"type": "string"},
+                        "description": {"type": "string"}
+                    }
+                }
+            )
+            
+            return data
+        
+        finally:
+            await session.end()
+
+# Usage
+result = scrape_url_task.delay("https://example.com")
+data = result.get()
+```
+
+## Async Context Managers
+
+Always use async context managers for proper resource cleanup:
+
+```python
+# Good: Automatic cleanup
+async with AsyncStagehand() as client:
+    session = await client.sessions.start(...)
+    # Client is automatically closed
+
+# Also good: Manual cleanup
+client = AsyncStagehand()
+try:
+    session = await client.sessions.start(...)
+finally:
+    await client.close()
+```
+
+## Performance Tips
+
+### Connection Pooling
+
+Reuse a single client instance:
+
+```python
+# Create once
+client = AsyncStagehand()
+
+async def task1():
+    session = await client.sessions.start(...)
+    # ...
+    await session.end()
+
+async def task2():
+    session = await client.sessions.start(...)
+    # ...
+    await session.end()
+
+# Run concurrently
+await asyncio.gather(task1(), task2())
+
+# Close when done
+await client.close()
+```
+
+### Semaphore for Rate Limiting
+
+```python
+import asyncio
+from stagehand import AsyncStagehand
+
+async def scrape_with_limit(client, url, semaphore):
+    async with semaphore:
+        session = await client.sessions.start(
+            model_name="anthropic/claude-sonnet-4-6"
+        )
+        try:
+            await session.navigate(url=url)
+            # ...
+        finally:
+            await session.end()
+
+async def main():
+    urls = [f"https://example.com/page{i}" for i in range(100)]
+    
+    # Limit to 5 concurrent sessions
+    semaphore = asyncio.Semaphore(5)
+    
+    async with AsyncStagehand() as client:
+        tasks = [
+            scrape_with_limit(client, url, semaphore)
+            for url in urls
+        ]
+        await asyncio.gather(*tasks)
+
+asyncio.run(main())
+```
+
+## Error Handling Patterns
+
+### Retry Logic
+
+```python
+import asyncio
+from stagehand import AsyncStagehand, APIError
+
+async def scrape_with_retry(client, url, max_retries=3):
+    for attempt in range(max_retries):
+        try:
+            session = await client.sessions.start(
+                model_name="anthropic/claude-sonnet-4-6"
+            )
+            
+            await session.navigate(url=url)
+            # Perform operations...
+            
+            await session.end()
+            return  # Success
+            
+        except APIError as e:
+            if attempt == max_retries - 1:
+                raise  # Final attempt failed
+            
+            # Exponential backoff
+            wait_time = 2 ** attempt
+            print(f"Retry {attempt + 1}/{max_retries} after {wait_time}s")
+            await asyncio.sleep(wait_time)
+```
+
+### Timeout Handling
+
+```python
+import asyncio
+from stagehand import AsyncStagehand
+
+async def scrape_with_timeout(client, url, timeout=60):
+    try:
+        async with asyncio.timeout(timeout):
+            session = await client.sessions.start(
+                model_name="anthropic/claude-sonnet-4-6"
+            )
+            
+            await session.navigate(url=url)
+            # ...
+            await session.end()
+    
+    except asyncio.TimeoutError:
+        print(f"Operation timed out after {timeout}s")
+```
+
+## Best Practices
+
+1. **Use `AsyncStagehand`** for all production code
+2. **Always use context managers** (`async with`) for automatic cleanup
+3. **Create a single client instance** and reuse it
+4. **Use `asyncio.gather()`** for concurrent operations
+5. **Add semaphores** to limit concurrency and avoid rate limits
+6. **Handle errors gracefully** with try/except blocks
+7. **Use streaming** for long-running operations to monitor progress
+8. **Consider aiohttp** for better performance in high-concurrency scenarios
+9. **Set appropriate timeouts** to prevent hanging operations
+10. **Implement retry logic** for transient failures

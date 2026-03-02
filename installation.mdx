@@ -1,0 +1,324 @@
+---
+title: "Installation"
+description: "Install the Stagehand Python SDK and configure your development environment."
+---
+
+## Requirements
+
+<Info>
+  Stagehand requires **Python 3.9 or higher**.
+</Info>
+
+The SDK is compatible with:
+- Python 3.9+
+- Python 3.10+
+- Python 3.11+
+- Python 3.12+
+- Python 3.13+
+- Python 3.14+
+
+Supported platforms:
+- Linux
+- macOS
+- Windows
+
+## Install Stagehand
+
+<Tabs>
+  <Tab title="uv (recommended)">
+    Install using `uv`, the fast Python package installer:
+
+    ```bash
+    uv pip install stagehand
+    ```
+
+    <Tip>
+      `uv` is significantly faster than pip and provides better dependency resolution. Install it from [astral.sh/uv](https://astral.sh/uv).
+    </Tip>
+  </Tab>
+  
+  <Tab title="pip">
+    Install using pip:
+
+    ```bash
+    pip install stagehand
+    ```
+  </Tab>
+</Tabs>
+
+## Optional Dependencies
+
+### aiohttp Support
+
+For improved concurrency performance with async operations, you can install the aiohttp extra:
+
+```bash
+uv pip install stagehand[aiohttp]
+```
+
+This allows you to use `DefaultAioHttpClient()` for better async performance:
+
+```python
+from stagehand import AsyncStagehand, DefaultAioHttpClient
+
+client = AsyncStagehand(http_client=DefaultAioHttpClient())
+```
+
+<Note>
+  By default, the async client uses `httpx`. The aiohttp backend is optional but recommended for high-concurrency scenarios.
+</Note>
+
+## Environment Variables
+
+Stagehand requires three environment variables to authenticate with Browserbase and your LLM provider.
+
+### Required Variables
+
+<ParamField path="BROWSERBASE_API_KEY" type="string" required>
+  Your Browserbase API key for browser infrastructure.
+  
+  Get your API key from the [Browserbase dashboard](https://www.browserbase.com/dashboard).
+</ParamField>
+
+<ParamField path="BROWSERBASE_PROJECT_ID" type="string" required>
+  Your Browserbase project ID.
+  
+  Find this in your [Browserbase project settings](https://www.browserbase.com/dashboard).
+</ParamField>
+
+<ParamField path="MODEL_API_KEY" type="string" required>
+  Your LLM provider API key (e.g., Anthropic, OpenAI).
+  
+  For Anthropic Claude models, get your key from [console.anthropic.com](https://console.anthropic.com/).
+</ParamField>
+
+### Optional Variables
+
+<ParamField path="STAGEHAND_BASE_URL" type="string" default="https://api.stagehand.browserbase.com">
+  The Stagehand API base URL. Only change this if using a custom deployment.
+</ParamField>
+
+<ParamField path="STAGEHAND_LOG" type="string" default="none">
+  Logging level for SDK operations.
+  
+  Options: `info`, `debug`
+</ParamField>
+
+### Setting Environment Variables
+
+<Tabs>
+  <Tab title=".env file">
+    Create a `.env` file in your project root:
+
+    ```bash .env
+    BROWSERBASE_API_KEY=bb_live_your_api_key_here
+    BROWSERBASE_PROJECT_ID=your-bb-project-uuid-here
+    MODEL_API_KEY=sk-proj-your-llm-api-key-here
+    STAGEHAND_BASE_URL=https://api.stagehand.browserbase.com
+    ```
+
+    Then load it in your code:
+
+    ```python
+    import os
+    from dotenv import load_dotenv
+
+    load_dotenv()
+    ```
+  </Tab>
+  
+  <Tab title="Shell export">
+    Export variables in your shell:
+
+    ```bash
+    export BROWSERBASE_API_KEY="bb_live_your_api_key_here"
+    export BROWSERBASE_PROJECT_ID="your-bb-project-uuid-here"
+    export MODEL_API_KEY="sk-proj-your-llm-api-key-here"
+    ```
+
+    Add these to your `~/.bashrc`, `~/.zshrc`, or equivalent for persistence.
+  </Tab>
+  
+  <Tab title="Python code">
+    Set variables directly in Python:
+
+    ```python
+    import os
+
+    os.environ["BROWSERBASE_API_KEY"] = "bb_live_your_api_key_here"
+    os.environ["BROWSERBASE_PROJECT_ID"] = "your-bb-project-uuid-here"
+    os.environ["MODEL_API_KEY"] = "sk-proj-your-llm-api-key-here"
+    ```
+
+    <Warning>
+      Avoid hardcoding secrets in production code. Use environment variables or secret management services.
+    </Warning>
+  </Tab>
+</Tabs>
+
+## Verify Installation
+
+Verify that Stagehand is installed correctly:
+
+```python
+import stagehand
+
+print(stagehand.__version__)
+```
+
+You should see the version number (e.g., `3.6.0`).
+
+## Client Configuration
+
+You can configure the Stagehand client in three ways:
+
+### 1. Environment Variables (Recommended)
+
+The simplest approach - set environment variables and create the client:
+
+```python
+from stagehand import AsyncStagehand
+
+client = AsyncStagehand()
+```
+
+The client automatically reads:
+- `BROWSERBASE_API_KEY`
+- `BROWSERBASE_PROJECT_ID`
+- `MODEL_API_KEY`
+- `STAGEHAND_BASE_URL` (optional)
+
+### 2. Explicit Configuration
+
+Pass configuration directly to the client:
+
+```python
+from stagehand import AsyncStagehand
+
+client = AsyncStagehand(
+    browserbase_api_key="bb_live_your_api_key_here",
+    browserbase_project_id="your-bb-project-uuid-here",
+    model_api_key="sk-proj-your-llm-api-key-here",
+)
+```
+
+### 3. Hybrid Approach
+
+Combine environment variables with explicit overrides:
+
+```python
+from stagehand import AsyncStagehand
+
+# Uses env vars for most settings, override specific values
+client = AsyncStagehand(
+    base_url="https://custom.api.endpoint.com",
+)
+```
+
+<Tip>
+  Keyword arguments always take precedence over environment variables.
+</Tip>
+
+## Configuration Reference
+
+| Parameter | Environment Variable | Required | Default |
+|-----------|---------------------|----------|----------|
+| `browserbase_api_key` | `BROWSERBASE_API_KEY` | Yes | - |
+| `browserbase_project_id` | `BROWSERBASE_PROJECT_ID` | Yes | - |
+| `model_api_key` | `MODEL_API_KEY` | Yes | - |
+| `base_url` | `STAGEHAND_BASE_URL` | No | `https://api.stagehand.browserbase.com` |
+
+## Additional Configuration
+
+### Timeouts
+
+Configure request timeouts:
+
+```python
+from stagehand import AsyncStagehand
+
+client = AsyncStagehand(timeout=120.0)  # 2 minutes
+```
+
+### Retries
+
+Configure automatic retries:
+
+```python
+from stagehand import AsyncStagehand
+
+client = AsyncStagehand(max_retries=5)
+```
+
+By default, the SDK retries:
+- Connection errors
+- 408 Request Timeout
+- 409 Conflict
+- 429 Rate Limit
+- 5xx Server errors
+
+### HTTP Client Customization
+
+Customize the underlying HTTP client for proxies, custom transports, etc.:
+
+```python
+import httpx
+from stagehand import AsyncStagehand, DefaultHttpxClient
+
+client = AsyncStagehand(
+    http_client=DefaultHttpxClient(
+        proxy="http://proxy.example.com:8080",
+        transport=httpx.HTTPTransport(local_address="0.0.0.0"),
+    )
+)
+```
+
+## Enable Logging
+
+Enable SDK logging for debugging:
+
+```bash
+export STAGEHAND_LOG=info
+```
+
+For verbose logging:
+
+```bash
+export STAGEHAND_LOG=debug
+```
+
+## Connection Pooling
+
+<Warning>
+  Do not create multiple client instances in the same application.
+</Warning>
+
+Each client maintains a connection pool. Create one client and reuse it:
+
+```python
+# Good: Single client instance
+client = AsyncStagehand()
+
+# Use the same client for all requests
+session1 = await client.sessions.start()
+session2 = await client.sessions.start()
+```
+
+```python
+# Bad: Multiple clients waste resources
+client1 = AsyncStagehand()
+client2 = AsyncStagehand()  # Don't do this!
+```
+
+To temporarily modify configuration while reusing the connection pool:
+
+```python
+# Temporary configuration override
+modified_client = client.with_options(max_retries=10)
+```
+
+## Next Steps
+
+<Card title="Quickstart Guide" icon="rocket" href="/quickstart">
+  Build your first browser automation with Stagehand
+</Card>

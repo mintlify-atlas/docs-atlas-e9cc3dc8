@@ -1,0 +1,92 @@
+---
+title: "Stream Events"
+description: "Server-Sent Event types emitted during streaming responses"
+---
+
+## StreamEvent
+
+Server-Sent Event emitted during streaming responses. Events are sent as `data: <JSON>\n\n`. Key order: data (with status first), type, id.
+
+<ResponseField name="id" type="str" required>
+  Unique identifier for this event
+</ResponseField>
+
+<ResponseField name="data" type="Data" required>
+  Event data - either system status or log message
+  
+  The data field can be one of two types:
+  
+  ### DataStreamEventSystemDataOutput
+  
+  System status events indicating the current state of the streaming operation.
+  
+  <Expandable title="System event fields">
+    <ResponseField name="status" type="Literal['starting', 'connected', 'running', 'finished', 'error']" required>
+      Current status of the streaming operation:
+      - `starting`: Operation is initializing
+      - `connected`: Connection established
+      - `running`: Operation is in progress
+      - `finished`: Operation completed successfully
+      - `error`: Operation failed
+    </ResponseField>
+    
+    <ResponseField name="error" type="str | None">
+      Error message (present when status is 'error')
+    </ResponseField>
+    
+    <ResponseField name="result" type="object | None">
+      Operation result (present when status is 'finished')
+    </ResponseField>
+  </Expandable>
+  
+  ### DataStreamEventLogDataOutput
+  
+  Log messages from the operation.
+  
+  <Expandable title="Log event fields">
+    <ResponseField name="message" type="str" required>
+      Log message from the operation
+    </ResponseField>
+    
+    <ResponseField name="status" type="Literal['running']" required>
+      Status is always 'running' for log events
+    </ResponseField>
+  </Expandable>
+</ResponseField>
+
+<ResponseField name="type" type="Literal['system', 'log']" required>
+  Type of stream event:
+  - `system`: System events indicating operational status
+  - `log`: Log messages from the operation
+</ResponseField>
+
+## Usage Example
+
+```python
+import asyncio
+from stagehand import AsyncStagehand
+
+async def main() -> None:
+    async with AsyncStagehand() as client:
+        session = await client.sessions.start(
+            model_name="anthropic/claude-sonnet-4-6"
+        )
+
+        stream = await client.sessions.act(
+            id=session.id,
+            input="click the first link on the page",
+            stream_response=True,
+            x_stream_response="true",
+        )
+        
+        async for event in stream:
+            # event is a StreamEvent
+            if event.type == "system":
+                print(f"Status: {event.data.status}")
+                if event.data.status == "finished":
+                    print(f"Result: {event.data.result}")
+            elif event.type == "log":
+                print(f"Log: {event.data.message}")
+
+asyncio.run(main())
+```

@@ -1,0 +1,386 @@
+---
+title: "Session Responses"
+description: "Response types returned by Stagehand session methods"
+---
+
+## SessionStartResponse
+
+Returned when starting a new browser session.
+
+<ResponseField name="success" type="bool" required>
+  Indicates whether the request was successful
+</ResponseField>
+
+<ResponseField name="data" type="Data" required>
+  Session start data containing connection information
+  
+  <Expandable title="Data fields">
+    <ResponseField name="available" type="bool" required>
+      Whether the session is available
+    </ResponseField>
+    
+    <ResponseField name="session_id" type="str" required>
+      Unique Browserbase session identifier
+    </ResponseField>
+    
+    <ResponseField name="cdp_url" type="str | None">
+      CDP WebSocket URL for connecting to the Browserbase cloud browser (present when available)
+    </ResponseField>
+  </Expandable>
+</ResponseField>
+
+## SessionActResponse
+
+Returned when performing an action on the page.
+
+<ResponseField name="success" type="bool" required>
+  Indicates whether the request was successful
+</ResponseField>
+
+<ResponseField name="data" type="Data" required>
+  Action execution results
+  
+  <Expandable title="Data fields">
+    <ResponseField name="result" type="DataResult" required>
+      Result of the action execution
+      
+      <Expandable title="DataResult fields">
+        <ResponseField name="action_description" type="str" required>
+          Description of the action that was performed
+        </ResponseField>
+        
+        <ResponseField name="actions" type="List[DataResultAction]" required>
+          List of actions that were executed
+          
+          <Expandable title="DataResultAction fields">
+            <ResponseField name="description" type="str" required>
+              Human-readable description of the action
+            </ResponseField>
+            
+            <ResponseField name="selector" type="str" required>
+              CSS selector or XPath for the element
+            </ResponseField>
+            
+            <ResponseField name="arguments" type="List[str] | None">
+              Arguments to pass to the method
+            </ResponseField>
+            
+            <ResponseField name="backend_node_id" type="float | None">
+              Backend node ID for the element
+            </ResponseField>
+            
+            <ResponseField name="method" type="str | None">
+              The method to execute (click, fill, etc.)
+            </ResponseField>
+          </Expandable>
+        </ResponseField>
+        
+        <ResponseField name="message" type="str" required>
+          Human-readable result message
+        </ResponseField>
+        
+        <ResponseField name="success" type="bool" required>
+          Whether the action completed successfully
+        </ResponseField>
+      </Expandable>
+    </ResponseField>
+    
+    <ResponseField name="action_id" type="str | None">
+      Action ID for tracking
+    </ResponseField>
+  </Expandable>
+</ResponseField>
+
+## SessionObserveResponse
+
+Returned when observing elements on the page.
+
+<ResponseField name="success" type="bool" required>
+  Indicates whether the request was successful
+</ResponseField>
+
+<ResponseField name="data" type="Data" required>
+  Observation results
+  
+  <Expandable title="Data fields">
+    <ResponseField name="result" type="List[DataResult]" required>
+      List of observed actions
+      
+      <Expandable title="DataResult fields">
+        <ResponseField name="description" type="str" required>
+          Human-readable description of the action
+        </ResponseField>
+        
+        <ResponseField name="selector" type="str" required>
+          CSS selector or XPath for the element
+        </ResponseField>
+        
+        <ResponseField name="arguments" type="List[str] | None">
+          Arguments to pass to the method
+        </ResponseField>
+        
+        <ResponseField name="backend_node_id" type="float | None">
+          Backend node ID for the element
+        </ResponseField>
+        
+        <ResponseField name="method" type="str | None">
+          The method to execute (click, fill, etc.)
+        </ResponseField>
+      </Expandable>
+    </ResponseField>
+    
+    <ResponseField name="action_id" type="str | None">
+      Action ID for tracking
+    </ResponseField>
+  </Expandable>
+</ResponseField>
+
+## SessionExtractResponse
+
+Returned when extracting structured data from the page.
+
+<ResponseField name="success" type="bool" required>
+  Indicates whether the request was successful
+</ResponseField>
+
+<ResponseField name="data" type="Data" required>
+  Extracted data
+  
+  <Expandable title="Data fields">
+    <ResponseField name="result" type="object" required>
+      Extracted data matching the requested schema
+    </ResponseField>
+    
+    <ResponseField name="action_id" type="str | None">
+      Action ID for tracking
+    </ResponseField>
+  </Expandable>
+</ResponseField>
+
+## SessionExecuteResponse
+
+Returned when executing an agent task.
+
+<ResponseField name="success" type="bool" required>
+  Indicates whether the request was successful
+</ResponseField>
+
+<ResponseField name="data" type="Data" required>
+  Agent execution results
+  
+  <Expandable title="Data fields">
+    <ResponseField name="result" type="DataResult" required>
+      Result of the agent execution
+      
+      <Expandable title="DataResult fields">
+        <ResponseField name="actions" type="List[DataResultAction]" required>
+          List of actions taken by the agent
+          
+          <Expandable title="DataResultAction fields">
+            <ResponseField name="type" type="str" required>
+              Type of action taken
+            </ResponseField>
+            
+            <ResponseField name="action" type="str | None">
+              Action identifier
+            </ResponseField>
+            
+            <ResponseField name="instruction" type="str | None">
+              Instruction for the action
+            </ResponseField>
+            
+            <ResponseField name="page_text" type="str | None">
+              Text content of the page
+            </ResponseField>
+            
+            <ResponseField name="page_url" type="str | None">
+              URL of the page
+            </ResponseField>
+            
+            <ResponseField name="reasoning" type="str | None">
+              Agent's reasoning for taking this action
+            </ResponseField>
+            
+            <ResponseField name="task_completed" type="bool | None">
+              Whether the task was completed
+            </ResponseField>
+            
+            <ResponseField name="time_ms" type="float | None">
+              Time taken for this action in milliseconds
+            </ResponseField>
+          </Expandable>
+        </ResponseField>
+        
+        <ResponseField name="completed" type="bool" required>
+          Whether the agent finished its task
+        </ResponseField>
+        
+        <ResponseField name="message" type="str" required>
+          Summary of what the agent accomplished
+        </ResponseField>
+        
+        <ResponseField name="success" type="bool" required>
+          Whether the agent completed successfully
+        </ResponseField>
+        
+        <ResponseField name="metadata" type="Dict[str, object] | None">
+          Additional metadata about the execution
+        </ResponseField>
+        
+        <ResponseField name="usage" type="DataResultUsage | None">
+          Token usage statistics
+          
+          <Expandable title="DataResultUsage fields">
+            <ResponseField name="inference_time_ms" type="float" required>
+              Total inference time in milliseconds
+            </ResponseField>
+            
+            <ResponseField name="input_tokens" type="float" required>
+              Number of input tokens used
+            </ResponseField>
+            
+            <ResponseField name="output_tokens" type="float" required>
+              Number of output tokens generated
+            </ResponseField>
+            
+            <ResponseField name="cached_input_tokens" type="float | None">
+              Number of cached input tokens
+            </ResponseField>
+            
+            <ResponseField name="reasoning_tokens" type="float | None">
+              Number of reasoning tokens used
+            </ResponseField>
+          </Expandable>
+        </ResponseField>
+      </Expandable>
+    </ResponseField>
+    
+    <ResponseField name="cache_entry" type="DataCacheEntry | None">
+      Cache entry for this execution
+      
+      <Expandable title="DataCacheEntry fields">
+        <ResponseField name="cache_key" type="str" required>
+          Opaque cache identifier computed from instruction, URL, options, and config
+        </ResponseField>
+        
+        <ResponseField name="entry" type="object" required>
+          Serialized cache entry that can be written to disk
+        </ResponseField>
+      </Expandable>
+    </ResponseField>
+  </Expandable>
+</ResponseField>
+
+## SessionNavigateResponse
+
+Returned when navigating to a URL.
+
+<ResponseField name="success" type="bool" required>
+  Indicates whether the request was successful
+</ResponseField>
+
+<ResponseField name="data" type="Data" required>
+  Navigation results
+  
+  <Expandable title="Data fields">
+    <ResponseField name="result" type="object" required>
+      Navigation response (Playwright Response object or null)
+    </ResponseField>
+    
+    <ResponseField name="action_id" type="str | None">
+      Action ID for tracking
+    </ResponseField>
+  </Expandable>
+</ResponseField>
+
+## SessionReplayResponse
+
+Returned when replaying a recorded session.
+
+<ResponseField name="success" type="bool" required>
+  Indicates whether the request was successful
+</ResponseField>
+
+<ResponseField name="data" type="Data" required>
+  Replay data
+  
+  <Expandable title="Data fields">
+    <ResponseField name="pages" type="List[DataPage]" required>
+      List of pages visited during the replay
+      
+      <Expandable title="DataPage fields">
+        <ResponseField name="actions" type="List[DataPageAction]" required>
+          Actions performed on this page
+          
+          <Expandable title="DataPageAction fields">
+            <ResponseField name="method" type="str" required>
+              Method that was called
+            </ResponseField>
+            
+            <ResponseField name="parameters" type="Dict[str, object]" required>
+              Parameters passed to the method
+            </ResponseField>
+            
+            <ResponseField name="result" type="Dict[str, object]" required>
+              Result of the method call
+            </ResponseField>
+            
+            <ResponseField name="timestamp" type="float" required>
+              Unix timestamp when the action started
+            </ResponseField>
+            
+            <ResponseField name="end_time" type="float | None">
+              Unix timestamp when the action completed
+            </ResponseField>
+            
+            <ResponseField name="token_usage" type="DataPageActionTokenUsage | None">
+              Token usage for this action
+              
+              <Expandable title="DataPageActionTokenUsage fields">
+                <ResponseField name="cost" type="float | None">
+                  Cost in dollars
+                </ResponseField>
+                
+                <ResponseField name="input_tokens" type="float | None">
+                  Number of input tokens
+                </ResponseField>
+                
+                <ResponseField name="output_tokens" type="float | None">
+                  Number of output tokens
+                </ResponseField>
+                
+                <ResponseField name="time_ms" type="float | None">
+                  Time in milliseconds
+                </ResponseField>
+              </Expandable>
+            </ResponseField>
+          </Expandable>
+        </ResponseField>
+        
+        <ResponseField name="duration" type="float" required>
+          Duration spent on this page in milliseconds
+        </ResponseField>
+        
+        <ResponseField name="timestamp" type="float" required>
+          Unix timestamp when the page was loaded
+        </ResponseField>
+        
+        <ResponseField name="url" type="str" required>
+          URL of the page
+        </ResponseField>
+      </Expandable>
+    </ResponseField>
+    
+    <ResponseField name="client_language" type="str | None">
+      Client language used during the session
+    </ResponseField>
+  </Expandable>
+</ResponseField>
+
+## SessionEndResponse
+
+Returned when ending a session.
+
+<ResponseField name="success" type="bool" required>
+  Indicates whether the request was successful
+</ResponseField>

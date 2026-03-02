@@ -1,0 +1,387 @@
+---
+title: "AsyncStagehand"
+description: "Asynchronous client for Stagehand browser automation"
+---
+
+The `AsyncStagehand` class is the asynchronous client for interacting with the Stagehand API. It provides the same functionality as the sync client but with async/await support for concurrent operations.
+
+## Constructor
+
+```python
+from stagehand import AsyncStagehand
+
+client = AsyncStagehand(
+    browserbase_api_key="your-api-key",
+    browserbase_project_id="your-project-id",
+    model_api_key="your-model-api-key",
+    server="remote"
+)
+```
+
+## Parameters
+
+<ParamField path="browserbase_api_key" type="str | None" default="None">
+  Browserbase API key for authentication. If not provided, reads from `BROWSERBASE_API_KEY` environment variable.
+</ParamField>
+
+<ParamField path="browserbase_project_id" type="str | None" default="None">
+  Browserbase project ID. If not provided, reads from `BROWSERBASE_PROJECT_ID` environment variable.
+</ParamField>
+
+<ParamField path="model_api_key" type="str | None" required>
+  API key for the AI model provider. If not provided, reads from `MODEL_API_KEY` environment variable. This parameter is required.
+</ParamField>
+
+<ParamField path="server" type="Literal['remote', 'local']" default="remote">
+  Server mode to use. Options:
+  - `"remote"`: Connect to remote Stagehand API (default)
+  - `"local"`: Run local Stagehand server
+</ParamField>
+
+### Local Server Parameters
+
+<ParamField path="_local_stagehand_binary_path" type="str | os.PathLike[str] | None" default="None">
+  Path to local Stagehand binary. Only used when `server="local"`.
+</ParamField>
+
+<ParamField path="local_host" type="str" default="127.0.0.1">
+  Host address for local server. Only used when `server="local"`.
+</ParamField>
+
+<ParamField path="local_port" type="int" default="0">
+  Port for local server. Set to `0` for automatic port assignment. Only used when `server="local"`.
+</ParamField>
+
+<ParamField path="local_headless" type="bool" default="True">
+  Whether to run Chrome in headless mode. Only used when `server="local"`.
+</ParamField>
+
+<ParamField path="local_chrome_path" type="str | None" default="None">
+  Custom Chrome executable path. Only used when `server="local"`.
+</ParamField>
+
+<ParamField path="local_ready_timeout_s" type="float" default="10.0">
+  Timeout in seconds for local server to become ready. Only used when `server="local"`.
+</ParamField>
+
+<ParamField path="local_openai_api_key" type="str | None" default="None">
+  OpenAI API key for local server. Falls back to `OPENAI_API_KEY` environment variable or `model_api_key`. Only used when `server="local"`.
+</ParamField>
+
+<ParamField path="local_shutdown_on_close" type="bool" default="True">
+  Whether to shutdown local server when client closes. Only used when `server="local"`.
+</ParamField>
+
+### HTTP Client Parameters
+
+<ParamField path="base_url" type="str | httpx.URL | None" default="None">
+  Base URL for API requests. Defaults to `https://api.stagehand.browserbase.com` for remote mode or reads from `STAGEHAND_BASE_URL` environment variable.
+</ParamField>
+
+<ParamField path="timeout" type="float | Timeout | None" default="60 seconds">
+  Request timeout in seconds or httpx Timeout object.
+</ParamField>
+
+<ParamField path="max_retries" type="int" default="2">
+  Maximum number of retry attempts for failed requests.
+</ParamField>
+
+<ParamField path="default_headers" type="Mapping[str, str] | None" default="None">
+  Additional headers to include in all requests.
+</ParamField>
+
+<ParamField path="default_query" type="Mapping[str, object] | None" default="None">
+  Additional query parameters to include in all requests.
+</ParamField>
+
+<ParamField path="http_client" type="httpx.AsyncClient | None" default="None">
+  Custom httpx async client instance. See [httpx documentation](https://www.python-httpx.org/api/#asyncclient) for configuration options.
+</ParamField>
+
+<ParamField path="_strict_response_validation" type="bool" default="False">
+  Enable strict schema validation for API responses. Raises `APIResponseValidationError` on validation failures.
+</ParamField>
+
+## Properties
+
+### sessions
+
+Access async session operations for creating and managing browser sessions.
+
+```python
+await client.sessions.start(model_name="anthropic/claude-sonnet-4-6")
+await client.sessions.navigate(session_id, url="https://example.com")
+await client.sessions.act(session_id, input="click the login button")
+await client.sessions.observe(session_id, instruction="find all product links")
+await client.sessions.extract(session_id, instruction="get page title", schema={...})
+await client.sessions.execute(session_id, execute_options={...})
+await client.sessions.end(session_id)
+```
+
+### with_raw_response
+
+Access raw HTTP responses with headers and status codes.
+
+```python
+response = await client.with_raw_response.sessions.start(
+    model_name="anthropic/claude-sonnet-4-6"
+)
+print(response.headers.get("X-Request-ID"))
+session = response.parse()
+```
+
+### with_streaming_response
+
+Stream response bodies for efficient data transfer.
+
+```python
+async with client.with_streaming_response.sessions.start(
+    model_name="anthropic/claude-sonnet-4-6"
+) as response:
+    async for line in response.iter_lines():
+        print(line)
+```
+
+## Methods
+
+### close()
+
+Async method to close the HTTP client and cleanup resources. If using local server mode, also shuts down the local server.
+
+```python
+await client.close()
+```
+
+<Note>
+Prefer using the client as an async context manager to ensure proper cleanup:
+
+```python
+async with AsyncStagehand(...) as client:
+    # your code here
+    pass
+# client is automatically closed
+```
+</Note>
+
+### copy()
+
+Create a new client instance with modified options while reusing the same connection pool.
+
+```python
+modified_client = client.copy(
+    timeout=120.0,
+    max_retries=5
+)
+```
+
+Alias: `with_options()`
+
+```python
+modified_client = client.with_options(
+    timeout=120.0,
+    max_retries=5
+)
+```
+
+## Usage Examples
+
+### Basic Async Usage
+
+```python
+import asyncio
+from stagehand import AsyncStagehand
+
+async def main():
+    async with AsyncStagehand(
+        browserbase_api_key="bb_api_key",
+        browserbase_project_id="bb_project_id",
+        model_api_key="llm_api_key"
+    ) as client:
+        session = await client.sessions.start(
+            model_name="anthropic/claude-sonnet-4-6"
+        )
+        
+        await client.sessions.navigate(session.id, url="https://example.com")
+        
+        result = await client.sessions.act(
+            session.id,
+            input="click the search button"
+        )
+        
+        await client.sessions.end(session.id)
+
+asyncio.run(main())
+```
+
+### Concurrent Operations
+
+```python
+import asyncio
+from stagehand import AsyncStagehand
+
+async def main():
+    async with AsyncStagehand(model_api_key="llm_api_key") as client:
+        # Start multiple sessions concurrently
+        sessions = await asyncio.gather(
+            client.sessions.start(model_name="anthropic/claude-sonnet-4-6"),
+            client.sessions.start(model_name="anthropic/claude-sonnet-4-6"),
+            client.sessions.start(model_name="anthropic/claude-sonnet-4-6")
+        )
+        
+        # Perform actions on all sessions concurrently
+        results = await asyncio.gather(*[
+            client.sessions.act(session.id, input="click the button")
+            for session in sessions
+        ])
+        
+        # Cleanup all sessions
+        await asyncio.gather(*[
+            client.sessions.end(session.id)
+            for session in sessions
+        ])
+
+asyncio.run(main())
+```
+
+### Streaming Events
+
+```python
+import asyncio
+from stagehand import AsyncStagehand
+
+async def main():
+    async with AsyncStagehand(model_api_key="llm_api_key") as client:
+        session = await client.sessions.start(
+            model_name="anthropic/claude-sonnet-4-6"
+        )
+        
+        # Stream act events
+        stream = await client.sessions.act(
+            session.id,
+            input="fill out the form",
+            stream_response=True,
+            x_stream_response="true"
+        )
+        
+        async for event in stream:
+            print(f"Event: {event.type} - {event.data}")
+        
+        await client.sessions.end(session.id)
+
+asyncio.run(main())
+```
+
+### With aiohttp
+
+For improved concurrency performance, use `aiohttp` as the HTTP backend:
+
+```python
+import asyncio
+from stagehand import AsyncStagehand, DefaultAioHttpClient
+
+async def main():
+    async with AsyncStagehand(
+        model_api_key="llm_api_key",
+        http_client=DefaultAioHttpClient()
+    ) as client:
+        session = await client.sessions.start(
+            model_name="anthropic/claude-sonnet-4-6"
+        )
+        
+        result = await client.sessions.act(
+            session.id,
+            input="search for products"
+        )
+        
+        await client.sessions.end(session.id)
+
+asyncio.run(main())
+```
+
+<Note>
+Install aiohttp support: `pip install stagehand[aiohttp]`
+</Note>
+
+### Local Server Mode
+
+```python
+import asyncio
+from stagehand import AsyncStagehand
+
+async def main():
+    async with AsyncStagehand(
+        server="local",
+        model_api_key="llm_api_key",
+        local_headless=False,  # run Chrome with UI
+        local_port=8080
+    ) as client:
+        session = await client.sessions.start(
+            model_name="anthropic/claude-sonnet-4-6"
+        )
+        
+        await client.sessions.navigate(session.id, url="https://example.com")
+        await client.sessions.end(session.id)
+
+asyncio.run(main())
+```
+
+### Error Handling
+
+```python
+import asyncio
+import stagehand
+from stagehand import AsyncStagehand
+
+async def main():
+    try:
+        async with AsyncStagehand(model_api_key="llm_api_key") as client:
+            session = await client.sessions.start(
+                model_name="anthropic/claude-sonnet-4-6"
+            )
+    except stagehand.AuthenticationError:
+        print("Invalid API key")
+    except stagehand.RateLimitError:
+        print("Rate limit exceeded - backing off")
+    except stagehand.APIConnectionError as e:
+        print(f"Connection failed: {e}")
+        print(f"Underlying cause: {e.__cause__}")
+    except stagehand.APIStatusError as e:
+        print(f"API error: {e.status_code}")
+        print(f"Response: {e.response}")
+
+asyncio.run(main())
+```
+
+### Manual Cleanup
+
+If not using a context manager:
+
+```python
+import asyncio
+from stagehand import AsyncStagehand
+
+async def main():
+    client = AsyncStagehand(model_api_key="llm_api_key")
+    
+    try:
+        session = await client.sessions.start(
+            model_name="anthropic/claude-sonnet-4-6"
+        )
+        
+        result = await client.sessions.act(
+            session.id,
+            input="perform action"
+        )
+        
+        await client.sessions.end(session.id)
+    finally:
+        await client.close()
+
+asyncio.run(main())
+```
+
+## See Also
+
+- [Stagehand](/api/client/stagehand) - Synchronous version of this client
+- [Sessions API](/api/sessions/start) - Session management operations
+- [Streaming Responses](/guides/streaming-responses) - Guide on handling streaming responses

@@ -1,0 +1,125 @@
+---
+title: "Navigate"
+description: "Navigate the browser to a specified URL"
+---
+
+## Method Signature
+
+```python
+client.sessions.navigate(
+    id: str,
+    url: str,
+    frame_id: str = None,
+    options: dict = None,
+) -> SessionNavigateResponse
+```
+
+## Parameters
+
+<ParamField path="id" type="string" required>
+Unique session identifier returned from `sessions.start()`
+</ParamField>
+
+<ParamField path="url" type="string" required>
+URL to navigate to
+</ParamField>
+
+<ParamField path="frame_id" type="string">
+Target frame ID for the navigation. If not specified, navigates in the main frame.
+</ParamField>
+
+<ParamField path="options" type="object">
+Navigation options.
+
+<Expandable title="Options properties">
+  <ParamField path="referer" type="string">
+  Referer header to send with the request
+  </ParamField>
+
+  <ParamField path="timeout" type="number">
+  Timeout in milliseconds for the navigation
+  </ParamField>
+
+  <ParamField path="wait_until" type="string">
+  When to consider navigation complete:
+  - `load`: Wait for load event
+  - `domcontentloaded`: Wait for DOMContentLoaded event
+  - `networkidle`: Wait for network to be idle
+  </ParamField>
+</Expandable>
+</ParamField>
+
+## Response
+
+<ResponseField name="success" type="boolean" required>
+Indicates whether the request was successful
+</ResponseField>
+
+<ResponseField name="data" type="object" required>
+<Expandable title="Data properties">
+  <ResponseField name="result" type="object" required>
+  Navigation response (Playwright Response object or null)
+  </ResponseField>
+
+  <ResponseField name="action_id" type="string">
+  Action ID for tracking
+  </ResponseField>
+</Expandable>
+</ResponseField>
+
+## Examples
+
+### Basic navigation
+
+```python
+from stagehand import Stagehand
+
+client = Stagehand()
+session = client.sessions.start(model_name="anthropic/claude-sonnet-4-6")
+
+# Navigate to a URL
+response = client.sessions.navigate(
+    session.data.session_id,
+    url="https://example.com",
+)
+
+print(f"Navigation successful: {response.success}")
+```
+
+### Navigation with wait condition
+
+```python
+# Wait for network to be idle before continuing
+response = client.sessions.navigate(
+    session.data.session_id,
+    url="https://example.com",
+    options={
+        "wait_until": "networkidle",
+        "timeout": 30000,  # 30 seconds
+    },
+)
+```
+
+### Navigation with custom referer
+
+```python
+response = client.sessions.navigate(
+    session.data.session_id,
+    url="https://example.com/protected-page",
+    options={
+        "referer": "https://example.com/home",
+        "wait_until": "domcontentloaded",
+    },
+)
+```
+
+### Navigate within an iframe
+
+```python
+# First, get the frame_id from previous operations
+response = client.sessions.navigate(
+    session.data.session_id,
+    url="https://example.com/iframe-content",
+    frame_id="frame-123",
+)
+```

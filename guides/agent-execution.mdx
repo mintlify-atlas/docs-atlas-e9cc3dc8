@@ -1,0 +1,412 @@
+---
+title: Agent Execution
+description: Run autonomous AI agents to complete complex multi-step browser tasks
+---
+
+The `execute()` method runs an autonomous AI agent that can navigate websites, make decisions, and complete multi-step tasks without explicit instructions for each action.
+
+## Basic Usage
+
+```python
+import asyncio
+from stagehand import AsyncStagehand
+
+async def main():
+    async with AsyncStagehand() as client:
+        session = await client.sessions.start(
+            model_name="anthropic/claude-sonnet-4-6"
+        )
+        
+        await session.navigate(url="https://news.ycombinator.com")
+        
+        # Run autonomous agent
+        response = await session.execute(
+            execute_options={
+                "instruction": "Find the top post and click through to read the top comment",
+                "max_steps": 5
+            },
+            agent_config={
+                "model": {"model_name": "anthropic/claude-opus-4-6"},
+                "cua": False
+            }
+        )
+        
+        result = response.data
+        print(f"Agent completed: {result.get('message')}")
+        print(f"Success: {result.get('success')}")
+        print(f"Actions taken: {len(result.get('actions', []))}")
+        
+        await session.end()
+
+asyncio.run(main())
+```
+
+## Streaming Agent Progress
+
+Monitor the agent's progress in real-time:
+
+```python
+async def execute_with_streaming():
+    async with AsyncStagehand() as client:
+        session = await client.sessions.start(
+            model_name="anthropic/claude-sonnet-4-6"
+        )
+        
+        await session.navigate(url="https://news.ycombinator.com")
+        
+        stream = await session.execute(
+            execute_options={
+                "instruction": "Go to Hacker News and return the titles of the first 3 articles",
+                "max_steps": 5
+            },
+            agent_config={
+                "model": "anthropic/claude-sonnet-4-6"
+            },
+            stream_response=True,
+            x_stream_response="true"
+        )
+        
+        async for event in stream:
+            if event.type == "log":
+                print(f"[AGENT LOG] {event.data.message}")
+            elif event.type == "system":
+                status = event.data.status
+                print(f"[STATUS] {status}")
+                
+                if status == "finished":
+                    result = event.data.result
+                    print(f"Final result: {result.get('message')}")
+                    print(f"Success: {result.get('success')}")
+                    print(f"Steps taken: {len(result.get('actions', []))}")
+                elif status == "error":
+                    print(f"Agent error: {event.data.error}")
+        
+        await session.end()
+```
+
+## Complex Multi-Step Tasks
+
+```python
+import os
+
+async def complex_agent_task():
+    async with AsyncStagehand() as client:
+        session = await client.sessions.start(
+            model_name="anthropic/claude-sonnet-4-6"
+        )
+        
+        await session.navigate(url="https://news.ycombinator.com")
+        
+        # First, extract information
+        extract_result = await session.extract(
+            instruction="extract the author of the top comment",
+            schema={
+                "type": "object",
+                "properties": {
+                    "author": {"type": "string"}
+                },
+                "required": ["author"]
+            }
+        )
+        
+        author = extract_result.data.get('author')
+        print(f"Looking up profile for: {author}")
+        
+        # Let the agent navigate and find information
+        stream = await session.execute(
+            execute_options={
+                "instruction": f"""
+                Find any personal website, GitHub, LinkedIn, or other profile URL 
+                for the Hacker News user '{author}'. Click on their username to 
+                go to their profile and look for any links they have shared. 
+                If no direct links are found, use Google Search with their username.
+                """,
+                "max_steps": 15
+            },
+            agent_config={
+                "model": {
+                    "model_name": "anthropic/claude-opus-4-6",
+                    "api_key": os.environ.get("MODEL_API_KEY")
+                },
+                "cua": False
+            },
+            stream_response=True,
+            x_stream_response="true",
+            timeout=300.0  # 5 minutes for complex task
+        )
+        
+        async for event in stream:
+            if event.type == "log":
+                print(f"[AGENT] {event.data.message}")
+            elif event.data.status == "finished":
+                print(f"Found profile: {event.data.result.get('message')}")
+        
+        await session.end()
+```
+
+## Parameters
+
+<ParamField path="execute_options" type="object" required>
+  Configuration for the agent's task:
+  - `instruction` (string, required): High-level goal for the agent
+  - `max_steps` (integer, required): Maximum number of actions the agent can take
+</ParamField>
+
+<ParamField path="agent_config" type="object" required>
+  Agent configuration:
+  - `model`: Model configuration object or model name string
+    - As object: `{"model_name": "...", "api_key": "..."}` 
+    - As string: `"anthropic/claude-opus-4-6"`
+  - `cua` (boolean): Enable computer use agent mode
+</ParamField>
+
+<ParamField path="frame_id" type="string">
+  Optional. Run the agent within a specific iframe
+</ParamField>
+
+<ParamField path="should_cache" type="boolean">
+  Enable caching to reuse successful action sequences
+</ParamField>
+
+<ParamField path="stream_response" type="boolean" default="false">
+  Enable SSE streaming to monitor agent progress in real-time
+</ParamField>
+
+<ParamField path="x_stream_response" type="string">
+  Set to `"true"` to enable server-side streaming (required with `stream_response=True`)
+</ParamField>
+
+<ParamField path="timeout" type="float">
+  Request timeout in seconds. Agent tasks can take longer, so consider increasing this (e.g., 300.0 for 5 minutes)
+</ParamField>
+
+## Return Value
+
+### Non-Streaming
+
+Returns `SessionExecuteResponse` with:
+
+```python
+response.data.get('message')  # Summary of what the agent accomplished
+response.data.get('success')  # Boolean indicating if goal was achieved
+response.data.get('actions')  # List of actions the agent took
+```
+
+### Streaming
+
+Returns an async iterator of `StreamEvent` objects:
+
+```python
+event.type  # "log" or "system"
+event.data.status  # "running", "finished", or "error"
+event.data.result  # Final result when status is "finished"
+event.data.error  # Error message if agent failed
+event.data.message  # Step-by-step logs from the agent
+```
+
+## Agent Configuration
+
+### Model Selection
+
+Choose the right model for your task:
+
+```python
+# Fast and cost-effective
+agent_config = {
+    "model": "anthropic/claude-sonnet-4-6"
+}
+
+# More capable for complex reasoning
+agent_config = {
+    "model": "anthropic/claude-opus-4-6"
+}
+
+# With explicit API key
+agent_config = {
+    "model": {
+        "model_name": "anthropic/claude-opus-4-6",
+        "api_key": "your-api-key-here"
+    }
+}
+```
+
+### Computer Use Agent (CUA)
+
+```python
+# Enable CUA for more autonomous behavior
+agent_config = {
+    "model": "anthropic/claude-opus-4-6",
+    "cua": True  # More autonomous, less structured
+}
+
+# Standard mode (recommended for most use cases)
+agent_config = {
+    "model": "anthropic/claude-opus-4-6",
+    "cua": False  # More predictable, uses structured actions
+}
+```
+
+## Execution Options
+
+### Setting Max Steps
+
+```python
+# Simple task - fewer steps needed
+execute_options = {
+    "instruction": "Click the login button",
+    "max_steps": 3
+}
+
+# Complex task - more steps allowed
+execute_options = {
+    "instruction": "Research and compare the top 3 products, then add the cheapest to cart",
+    "max_steps": 20
+}
+```
+
+### Writing Good Instructions
+
+```python
+# ❌ Too vague
+instruction = "Find stuff"
+
+# ✅ Clear and specific
+instruction = "Navigate to the pricing page, find the enterprise plan, and extract the price"
+
+# ✅ With success criteria
+instruction = "Search for 'laptop' and click on the first result that is under $1000"
+
+# ✅ Multi-step with context
+instruction = """
+Go to the products page, filter by 'in stock' items, 
+sort by price (low to high), and return the names and 
+prices of the first 5 items.
+"""
+```
+
+## Use Cases
+
+### Research Tasks
+
+```python
+# Agent navigates and gathers information
+result = await session.execute(
+    execute_options={
+        "instruction": "Find the latest blog post and summarize the key points",
+        "max_steps": 10
+    },
+    agent_config={"model": "anthropic/claude-opus-4-6"}
+)
+```
+
+### E-commerce Workflows
+
+```python
+# Agent completes shopping task
+result = await session.execute(
+    execute_options={
+        "instruction": """
+        Search for 'wireless headphones', filter for items with 
+        4+ star ratings under $100, and add the top result to cart.
+        """,
+        "max_steps": 15
+    },
+    agent_config={"model": "anthropic/claude-sonnet-4-6"}
+)
+```
+
+### Form Automation
+
+```python
+# Agent fills out complex forms
+result = await session.execute(
+    execute_options={
+        "instruction": """
+        Fill out the job application form with:
+        Name: John Doe
+        Email: john@example.com
+        Years of experience: 5
+        Upload resume from the downloads folder
+        Submit the application
+        """,
+        "max_steps": 12
+    },
+    agent_config={"model": "anthropic/claude-opus-4-6"}
+)
+```
+
+## Best Practices
+
+<Tip>
+Start with a lower `max_steps` value and increase it if the agent runs out of steps. This prevents runaway costs.
+</Tip>
+
+<Warning>
+Agent execution can take time and consume many tokens. Use streaming to monitor progress and set appropriate timeouts.
+</Warning>
+
+<Info>
+For production use, implement retry logic and validation of agent results. Agents may not always achieve the goal on the first try.
+</Info>
+
+## Error Handling
+
+```python
+import stagehand
+
+try:
+    stream = await session.execute(
+        execute_options={
+            "instruction": "Complete the checkout process",
+            "max_steps": 10
+        },
+        agent_config={"model": "anthropic/claude-sonnet-4-6"},
+        stream_response=True,
+        x_stream_response="true",
+        timeout=180.0
+    )
+    
+    async for event in stream:
+        if event.data.status == "error":
+            print(f"Agent encountered error: {event.data.error}")
+            # Implement fallback logic
+            break
+        elif event.data.status == "finished":
+            if not event.data.result.get('success'):
+                print("Agent completed but did not achieve goal")
+                # Retry or manual intervention
+            
+except stagehand.APITimeoutError:
+    print("Agent execution timed out")
+    # Increase timeout or reduce max_steps
+except stagehand.RateLimitError:
+    print("Rate limit hit - too many agent steps")
+    # Implement backoff strategy
+```
+
+## Combining with Other Methods
+
+```python
+# Use observe/act for precise control, execute for exploration
+
+# Precise extraction
+product_data = await session.extract(
+    instruction="get the product name and price",
+    schema=my_schema
+)
+
+# Precise action  
+await session.act(input="click the add to cart button")
+
+# Let agent handle complex navigation
+await session.execute(
+    execute_options={
+        "instruction": "Navigate to checkout and fill in shipping information",
+        "max_steps": 10
+    },
+    agent_config={"model": "anthropic/claude-sonnet-4-6"}
+)
+
+# Back to precise control
+await session.act(input="click the place order button")
+```

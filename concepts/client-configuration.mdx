@@ -1,0 +1,366 @@
+---
+title: Client Configuration
+description: Configure the Stagehand client with environment variables, constructor arguments, and runtime options
+---
+
+The Stagehand client can be configured using environment variables, constructor arguments, or runtime modifications. This flexibility allows you to adapt to different environments and use cases.
+
+## Quick Start
+
+The simplest way to configure the client is using environment variables:
+
+```python
+from stagehand import AsyncStagehand
+
+# Reads from environment variables automatically
+client = AsyncStagehand()
+```
+
+## Configuration Methods
+
+### Environment Variables
+
+Set these environment variables to configure the client:
+
+| Variable | Required | Default | Description |
+|----------|----------|---------|-------------|
+| `BROWSERBASE_API_KEY` | Yes* | - | Your Browserbase API key |
+| `BROWSERBASE_PROJECT_ID` | Yes* | - | Your Browserbase project ID |
+| `MODEL_API_KEY` | Yes | - | API key for the AI model (OpenAI, Anthropic, etc.) |
+| `STAGEHAND_BASE_URL` | No | `https://api.stagehand.browserbase.com` | Stagehand API base URL |
+
+*Required when using remote sessions with Browserbase
+
+```bash
+# .env file
+BROWSERBASE_API_KEY=your-browserbase-key
+BROWSERBASE_PROJECT_ID=your-project-id
+MODEL_API_KEY=your-model-api-key
+```
+
+```python
+import os
+from dotenv import load_dotenv
+from stagehand import AsyncStagehand
+
+load_dotenv()
+
+client = AsyncStagehand()  # Automatically reads from environment
+```
+
+### Constructor Arguments
+
+You can override environment variables by passing arguments directly:
+
+```python
+from stagehand import AsyncStagehand
+
+client = AsyncStagehand(
+    browserbase_api_key="your-browserbase-key",
+    browserbase_project_id="your-project-id",
+    model_api_key="your-model-key",
+    base_url="https://api.stagehand.browserbase.com"
+)
+```
+
+<Note>
+  Constructor arguments take precedence over environment variables.
+</Note>
+
+### Hybrid Approach
+
+Combine environment variables with selective overrides:
+
+```python
+from stagehand import AsyncStagehand
+
+# Use environment variables for most config,
+# but override the model API key
+client = AsyncStagehand(
+    model_api_key="different-api-key"  # Overrides MODEL_API_KEY env var
+)
+```
+
+## Client Options
+
+### Required Configuration
+
+<ParamField path="model_api_key" type="string" required>
+  API key for the AI model provider. Supports OpenAI, Anthropic, Google, and others.
+  
+  **Environment variable:** `MODEL_API_KEY`
+</ParamField>
+
+<ParamField path="browserbase_api_key" type="string">
+  Browserbase API key for remote browser sessions.
+  
+  **Environment variable:** `BROWSERBASE_API_KEY`
+  
+  Required when using `server="remote"` (default)
+</ParamField>
+
+<ParamField path="browserbase_project_id" type="string">
+  Browserbase project ID for remote browser sessions.
+  
+  **Environment variable:** `BROWSERBASE_PROJECT_ID`
+  
+  Required when using `server="remote"` (default)
+</ParamField>
+
+### Server Mode
+
+<ParamField path="server" type="'remote' | 'local'" default="remote">
+  Determines whether to use remote (Browserbase) or local browser instances.
+  
+  - `"remote"`: Uses Browserbase cloud infrastructure (recommended for production)
+  - `"local"`: Runs browser locally on your machine (good for development)
+</ParamField>
+
+### Network Configuration
+
+<ParamField path="base_url" type="string | httpx.URL" default="https://api.stagehand.browserbase.com">
+  Base URL for the Stagehand API.
+  
+  **Environment variable:** `STAGEHAND_BASE_URL`
+</ParamField>
+
+<ParamField path="timeout" type="float | Timeout" default="60.0">
+  Default timeout in seconds for API requests. Can be overridden per-request.
+  
+  ```python
+  from httpx import Timeout
+  
+  client = AsyncStagehand(
+      timeout=120.0  # 2 minutes
+  )
+  
+  # Or use httpx.Timeout for fine-grained control
+  client = AsyncStagehand(
+      timeout=Timeout(
+          connect=10.0,
+          read=60.0,
+          write=10.0,
+          pool=5.0
+      )
+  )
+  ```
+</ParamField>
+
+<ParamField path="max_retries" type="int" default="2">
+  Number of times to retry failed requests. Retries are performed for:
+  - Connection errors
+  - 408 Request Timeout
+  - 409 Conflict  
+  - 429 Rate Limit
+  - 500+ Internal Server errors
+  
+  ```python
+  client = AsyncStagehand(
+      max_retries=5  # Retry up to 5 times
+  )
+  ```
+</ParamField>
+
+### HTTP Client Customization
+
+<ParamField path="http_client" type="httpx.AsyncClient">
+  Custom HTTP client for advanced configuration (proxies, custom transports, etc.).
+  
+  ```python
+  import httpx
+  from stagehand import AsyncStagehand, DefaultAsyncHttpxClient
+  
+  client = AsyncStagehand(
+      http_client=DefaultAsyncHttpxClient(
+          proxy="http://proxy.example.com:8080",
+          transport=httpx.HTTPTransport(local_address="0.0.0.0")
+      )
+  )
+  ```
+</ParamField>
+
+### Local Mode Configuration
+
+When using `server="local"`, additional options are available:
+
+<ParamField path="local_host" type="string" default="127.0.0.1">
+  Host for the local Stagehand server.
+</ParamField>
+
+<ParamField path="local_port" type="int" default="0">
+  Port for the local server. Use `0` for automatic port selection.
+</ParamField>
+
+<ParamField path="local_headless" type="boolean" default="true">
+  Whether to run the local browser in headless mode.
+  
+  ```python
+  client = AsyncStagehand(
+      server="local",
+      local_headless=False  # Show browser window
+  )
+  ```
+</ParamField>
+
+<ParamField path="local_chrome_path" type="string">
+  Path to Chrome/Chromium executable for local mode.
+</ParamField>
+
+<ParamField path="local_ready_timeout_s" type="float" default="10.0">
+  Timeout in seconds to wait for the local server to be ready.
+</ParamField>
+
+<ParamField path="local_shutdown_on_close" type="boolean" default="true">
+  Whether to shut down the local server when the client is closed.
+</ParamField>
+
+## Runtime Configuration with `with_options()`
+
+Create a modified client instance without affecting the original:
+
+```python
+client = AsyncStagehand(max_retries=2)
+
+# Create a new client with different options
+client_with_longer_timeout = client.with_options(
+    timeout=180.0,
+    max_retries=5
+)
+
+# Original client is unchanged
+print(client.max_retries)  # 2
+print(client_with_longer_timeout.max_retries)  # 5
+```
+
+### Per-Request Overrides
+
+```python
+# One-off request with custom timeout
+session = await client.with_options(timeout=300.0).sessions.start(
+    model_name="anthropic/claude-sonnet-4-6"
+)
+```
+
+## Example Configurations
+
+### Development Setup
+
+```python
+from stagehand import AsyncStagehand
+
+# Local development with visible browser
+client = AsyncStagehand(
+    server="local",
+    local_headless=False,
+    model_api_key="your-api-key",
+    timeout=120.0,
+    max_retries=0  # Fail fast during development
+)
+```
+
+### Production Setup
+
+```python
+from stagehand import AsyncStagehand
+import os
+
+# Production with environment variables and retries
+client = AsyncStagehand(
+    server="remote",
+    browserbase_api_key=os.environ["BROWSERBASE_API_KEY"],
+    browserbase_project_id=os.environ["BROWSERBASE_PROJECT_ID"],
+    model_api_key=os.environ["MODEL_API_KEY"],
+    timeout=180.0,
+    max_retries=3
+)
+```
+
+### With Custom HTTP Client
+
+```python
+import httpx
+from stagehand import AsyncStagehand, DefaultAsyncHttpxClient
+
+client = AsyncStagehand(
+    http_client=DefaultAsyncHttpxClient(
+        proxy="http://proxy.example.com:8080",
+        transport=httpx.HTTPTransport(
+            local_address="0.0.0.0",
+            retries=5
+        )
+    )
+)
+```
+
+### With aiohttp (Better Concurrency)
+
+```python
+from stagehand import AsyncStagehand, DefaultAioHttpClient
+
+# Use aiohttp for improved concurrent performance
+client = AsyncStagehand(
+    http_client=DefaultAioHttpClient()
+)
+```
+
+<Note>
+  To use aiohttp, install with: `pip install stagehand[aiohttp]`
+</Note>
+
+## Connection Pooling
+
+<Note>
+  **Important:** Don't create multiple clients in the same application. Each client maintains a connection pool, which is more efficient when shared.
+</Note>
+
+```python
+# Good: Single client instance
+client = AsyncStagehand()
+
+async def task1():
+    session = await client.sessions.start(...)
+    # ...
+
+async def task2():
+    session = await client.sessions.start(...)
+    # ...
+```
+
+```python
+# Bad: Multiple clients
+async def task1():
+    client = AsyncStagehand()  # Creates new connection pool
+    session = await client.sessions.start(...)
+
+async def task2():
+    client = AsyncStagehand()  # Creates another connection pool
+    session = await client.sessions.start(...)
+```
+
+## Resource Management
+
+Always properly close the client to release resources:
+
+```python
+# Using context manager (recommended)
+async with AsyncStagehand() as client:
+    session = await client.sessions.start(...)
+    # Client is automatically closed after the block
+
+# Manual cleanup
+client = AsyncStagehand()
+try:
+    session = await client.sessions.start(...)
+finally:
+    await client.close()
+```
+
+## Best Practices
+
+1. **Use environment variables** for sensitive credentials
+2. **Use context managers** to ensure proper cleanup
+3. **Create a single client instance** per application
+4. **Use `with_options()`** for temporary configuration changes
+5. **Set appropriate timeouts** based on your use case
+6. **Enable retries** in production for reliability
+7. **Use local mode** for development and debugging

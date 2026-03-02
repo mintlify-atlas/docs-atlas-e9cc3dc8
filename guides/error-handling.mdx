@@ -1,0 +1,414 @@
+---
+title: Error Handling
+description: Handle exceptions and errors when using the Stagehand Python SDK
+---
+
+The Stagehand SDK provides specific exception types for different error scenarios. All exceptions inherit from `stagehand.APIError`, making it easy to implement comprehensive error handling.
+
+## Exception Hierarchy
+
+```python
+StagehandError (base exception)
+├── APIError (all API-related errors)
+    ├── APIConnectionError (network issues)
+    │   └── APITimeoutError (request timeouts)
+    ├── APIStatusError (HTTP 4xx/5xx errors)
+    │   ├── BadRequestError (400)
+    │   ├── AuthenticationError (401)
+    │   ├── PermissionDeniedError (403)
+    │   ├── NotFoundError (404)
+    │   ├── ConflictError (409)
+    │   ├── UnprocessableEntityError (422)
+    │   ├── RateLimitError (429)
+    │   └── InternalServerError (500+)
+    └── APIResponseValidationError (schema validation)
+```
+
+## Basic Error Handling
+
+```python
+import asyncio
+import stagehand
+from stagehand import AsyncStagehand
+
+async def main():
+    async with AsyncStagehand() as client:
+        try:
+            session = await client.sessions.start(
+                model_name="anthropic/claude-sonnet-4-6"
+            )
+            await session.act(input="click the button")
+            
+        except stagehand.APIError as e:
+            print(f"API error occurred: {e.message}")
+            print(f"Request: {e.request.url}")
+            if e.body:
+                print(f"Response body: {e.body}")
+
+asyncio.run(main())
+```
+
+## Specific Exception Types
+
+### Connection Errors
+
+Raised when the library cannot connect to the API:
+
+```python
+try:
+    session = await client.sessions.start(
+        model_name="anthropic/claude-sonnet-4-6"
+    )
+except stagehand.APIConnectionError as e:
+    print("Could not connect to Stagehand API")
+    print(f"Underlying error: {e.__cause__}")
+    # Could be network issues, DNS problems, etc.
+```
+
+### Timeout Errors
+
+Raised when requests exceed the configured timeout:
+
+```python
+try:
+    # This might take a while
+    result = await session.execute(
+        execute_options={
+            "instruction": "Complete complex task",
+            "max_steps": 20
+        },
+        agent_config={"model": "anthropic/claude-opus-4-6"},
+        timeout=30.0  # 30 seconds
+    )
+except stagehand.APITimeoutError as e:
+    print("Request timed out")
+    # Retry with longer timeout or fewer steps
+    result = await session.execute(
+        execute_options={
+            "instruction": "Complete complex task",
+            "max_steps": 10
+        },
+        agent_config={"model": "anthropic/claude-opus-4-6"},
+        timeout=60.0  # Try 60 seconds
+    )
+```
+
+### Authentication Errors
+
+Raised when API credentials are invalid or missing:
+
+```python
+try:
+    client = AsyncStagehand(
+        model_api_key="invalid-key",
+        browserbase_api_key="invalid-key",
+        browserbase_project_id="invalid-id"
+    )
+    session = await client.sessions.start(
+        model_name="anthropic/claude-sonnet-4-6"
+    )
+except stagehand.AuthenticationError as e:
+    print("Authentication failed")
+    print(f"Status code: {e.status_code}")
+    print("Check your API keys and project ID")
+```
+
+### Rate Limit Errors
+
+Raised when you exceed API rate limits:
+
+```python
+import asyncio
+
+try:
+    # Multiple rapid requests
+    for i in range(100):
+        await session.act(input=f"action {i}")
+        
+except stagehand.RateLimitError as e:
+    print("Rate limit exceeded")
+    print(f"Status code: {e.status_code}")
+    
+    # Implement backoff
+    await asyncio.sleep(60)  # Wait 1 minute
+    # Retry the operation
+```
+
+### Bad Request Errors
+
+Raised when the request is malformed:
+
+```python
+try:
+    # Invalid schema format
+    result = await session.extract(
+        instruction="extract data",
+        schema={"invalid": "schema"}  # Missing required fields
+    )
+except stagehand.BadRequestError as e:
+    print("Invalid request")
+    print(f"Error details: {e.body}")
+    # Fix the schema and retry
+```
+
+### Not Found Errors
+
+Raised when a resource doesn't exist:
+
+```python
+try:
+    # Trying to use an invalid session ID
+    await client.sessions.act(
+        "invalid-session-id",
+        input="click button"
+    )
+except stagehand.NotFoundError as e:
+    print("Session not found")
+    print("Create a new session or check the session ID")
+```
+
+### Internal Server Errors
+
+Raised when the API encounters a server-side error:
+
+```python
+try:
+    result = await session.act(input="click button")
+except stagehand.InternalServerError as e:
+    print("Server error occurred")
+    print(f"Status code: {e.status_code}")
+    print(f"Response: {e.response}")
+    
+    # Retry with exponential backoff
+    for attempt in range(3):
+        await asyncio.sleep(2 ** attempt)  # 1s, 2s, 4s
+        try:
+            result = await session.act(input="click button")
+            break
+        except stagehand.InternalServerError:
+            if attempt == 2:
+                raise  # Give up after 3 attempts
+```
+
+## Comprehensive Error Handling Pattern
+
+```python
+import asyncio
+import stagehand
+from stagehand import AsyncStagehand
+
+async def robust_operation():
+    async with AsyncStagehand() as client:
+        session = None
+        
+        try:
+            # Start session
+            session = await client.sessions.start(
+                model_name="anthropic/claude-sonnet-4-6"
+            )
+            
+            # Navigate
+            await session.navigate(url="https://example.com")
+            
+            # Perform action
+            result = await session.act(
+                input="click the login button",
+                timeout=30.0
+            )
+            
+            return result.data
+            
+        except stagehand.APIConnectionError as e:
+            print(f"Connection error: {e.message}")
+            print(f"Cause: {e.__cause__}")
+            return None
+            
+        except stagehand.APITimeoutError:
+            print("Operation timed out")
+            # Could retry with longer timeout
+            return None
+            
+        except stagehand.AuthenticationError as e:
+            print(f"Authentication failed: {e.message}")
+            print("Check your API credentials")
+            raise  # Re-raise as this needs to be fixed
+            
+        except stagehand.RateLimitError as e:
+            print("Rate limit exceeded")
+            print(f"Status: {e.status_code}")
+            # Wait and retry
+            await asyncio.sleep(60)
+            return await robust_operation()  # Retry
+            
+        except stagehand.BadRequestError as e:
+            print(f"Bad request: {e.message}")
+            print(f"Details: {e.body}")
+            return None
+            
+        except stagehand.NotFoundError:
+            print("Resource not found")
+            return None
+            
+        except stagehand.InternalServerError as e:
+            print(f"Server error: {e.status_code}")
+            # Retry logic
+            for attempt in range(3):
+                await asyncio.sleep(2 ** attempt)
+                try:
+                    return await robust_operation()
+                except stagehand.InternalServerError:
+                    if attempt == 2:
+                        raise
+            
+        except stagehand.APIStatusError as e:
+            # Catch any other HTTP errors
+            print(f"API error: {e.status_code}")
+            print(f"Message: {e.message}")
+            print(f"Response: {e.response}")
+            return None
+            
+        except stagehand.APIError as e:
+            # Catch any other API errors
+            print(f"General API error: {e.message}")
+            return None
+            
+        finally:
+            # Always cleanup
+            if session:
+                try:
+                    await session.end()
+                except Exception as e:
+                    print(f"Error ending session: {e}")
+```
+
+## Validation Errors
+
+Enable strict response validation to catch schema mismatches:
+
+```python
+from stagehand import APIResponseValidationError, AsyncStagehand
+
+try:
+    async with AsyncStagehand(_strict_response_validation=True) as client:
+        session = await client.sessions.start(
+            model_name="anthropic/claude-sonnet-4-6"
+        )
+        
+except APIResponseValidationError as e:
+    print("Response validation failed")
+    print(f"Status code: {e.status_code}")
+    print(f"Response text: {e.response.text}")
+    print(f"Parsed body: {e.body}")
+```
+
+## Streaming Error Handling
+
+Handle errors in streaming responses:
+
+```python
+async def handle_streaming_errors():
+    async with AsyncStagehand() as client:
+        session = await client.sessions.start(
+            model_name="anthropic/claude-sonnet-4-6"
+        )
+        
+        try:
+            stream = await session.act(
+                input="click button",
+                stream_response=True,
+                x_stream_response="true"
+            )
+            
+            async for event in stream:
+                if event.type == "system":
+                    if event.data.status == "error":
+                        error_msg = event.data.error or "Unknown error"
+                        print(f"Stream error: {error_msg}")
+                        raise RuntimeError(f"Operation failed: {error_msg}")
+                    elif event.data.status == "finished":
+                        return event.data.result
+                        
+        except stagehand.APIError as e:
+            print(f"API error during streaming: {e.message}")
+            raise
+```
+
+## Retry Strategy
+
+Implement exponential backoff for transient errors:
+
+```python
+import asyncio
+import random
+
+async def retry_with_backoff(
+    func,
+    max_retries=3,
+    base_delay=1.0,
+    max_delay=60.0
+):
+    """Retry a function with exponential backoff."""
+    for attempt in range(max_retries):
+        try:
+            return await func()
+        except (stagehand.APIConnectionError, 
+                stagehand.APITimeoutError,
+                stagehand.InternalServerError) as e:
+            
+            if attempt == max_retries - 1:
+                raise  # Last attempt failed
+            
+            # Calculate delay with jitter
+            delay = min(base_delay * (2 ** attempt), max_delay)
+            jitter = random.uniform(0, delay * 0.1)
+            sleep_time = delay + jitter
+            
+            print(f"Attempt {attempt + 1} failed: {e.message}")
+            print(f"Retrying in {sleep_time:.2f} seconds...")
+            await asyncio.sleep(sleep_time)
+
+# Usage
+result = await retry_with_backoff(
+    lambda: session.act(input="click button")
+)
+```
+
+## Best Practices
+
+<Tip>
+Catch specific exceptions before general ones. Place more specific handlers (like `AuthenticationError`) before broader ones (like `APIError`).
+</Tip>
+
+<Warning>
+Always include a `finally` block to clean up resources like sessions, even when errors occur.
+</Warning>
+
+<Info>
+Log error details including `status_code`, `response`, and `body` for debugging. These provide valuable context.
+</Info>
+
+## Accessing Error Details
+
+All `APIStatusError` exceptions provide detailed information:
+
+```python
+try:
+    result = await session.act(input="invalid action")
+except stagehand.APIStatusError as e:
+    # HTTP status code
+    print(f"Status code: {e.status_code}")
+    
+    # Error message
+    print(f"Message: {e.message}")
+    
+    # Original request
+    print(f"Request URL: {e.request.url}")
+    print(f"Request method: {e.request.method}")
+    
+    # HTTP response
+    print(f"Response: {e.response}")
+    print(f"Response headers: {e.response.headers}")
+    
+    # Response body (parsed if JSON)
+    print(f"Body: {e.body}")
+```

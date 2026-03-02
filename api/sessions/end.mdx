@@ -1,0 +1,169 @@
+---
+title: "End Session"
+description: "Terminate the browser session and release all associated resources"
+---
+
+## Method Signature
+
+```python
+client.sessions.end(
+    id: str,
+) -> SessionEndResponse
+```
+
+## Parameters
+
+<ParamField path="id" type="string" required>
+Unique session identifier returned from `sessions.start()`
+</ParamField>
+
+## Response
+
+<ResponseField name="success" type="boolean" required>
+Indicates whether the session was successfully terminated
+</ResponseField>
+
+## Examples
+
+### Basic session cleanup
+
+```python
+from stagehand import Stagehand
+
+client = Stagehand()
+session = client.sessions.start(model_name="anthropic/claude-sonnet-4-6")
+
+# Perform some actions
+client.sessions.navigate(session.data.session_id, url="https://example.com")
+client.sessions.act(session.data.session_id, input="Click the first link")
+
+# End the session
+response = client.sessions.end(session.data.session_id)
+print(f"Session ended: {response.success}")
+```
+
+### Using context manager (recommended)
+
+```python
+from stagehand import Stagehand
+
+# Session is automatically ended when exiting the context
+with Stagehand() as client:
+    session = client.sessions.start(model_name="anthropic/claude-sonnet-4-6")
+    
+    client.sessions.navigate(session.data.session_id, url="https://example.com")
+    client.sessions.act(session.data.session_id, input="Click the button")
+    
+    # Session will be automatically ended here
+```
+
+### Error handling
+
+```python
+try:
+    response = client.sessions.end(session.data.session_id)
+    if response.success:
+        print("Session successfully terminated")
+    else:
+        print("Failed to terminate session")
+except Exception as e:
+    print(f"Error ending session: {e}")
+```
+
+### Async session cleanup
+
+```python
+import asyncio
+from stagehand import AsyncStagehand
+
+async def main():
+    async with AsyncStagehand() as client:
+        session = await client.sessions.start(model_name="anthropic/claude-sonnet-4-6")
+        await client.sessions.navigate(session.data.session_id, url="https://example.com")
+        
+        # End the session
+        response = await client.sessions.end(session.data.session_id)
+        print(f"Session ended: {response.success}")
+
+asyncio.run(main())
+```
+
+### Cleanup after error
+
+```python
+session = client.sessions.start(model_name="anthropic/claude-sonnet-4-6")
+
+try:
+    client.sessions.navigate(session.data.session_id, url="https://example.com")
+    client.sessions.act(session.data.session_id, input="Click something")
+except Exception as e:
+    print(f"Error during automation: {e}")
+finally:
+    # Always clean up the session
+    client.sessions.end(session.data.session_id)
+    print("Session cleaned up")
+```
+
+### Managing multiple sessions
+
+```python
+# Start multiple sessions
+sessions = []
+for i in range(3):
+    session = client.sessions.start(model_name="anthropic/claude-sonnet-4-6")
+    sessions.append(session.data.session_id)
+
+# Perform work...
+
+# End all sessions
+for session_id in sessions:
+    response = client.sessions.end(session_id)
+    print(f"Session {session_id}: {response.success}")
+```
+
+## Best Practices
+
+### Always end sessions
+
+Always end sessions to avoid resource leaks and unnecessary charges:
+
+```python
+# Bad: session may not be cleaned up
+session = client.sessions.start(model_name="anthropic/claude-sonnet-4-6")
+client.sessions.navigate(session.data.session_id, url="https://example.com")
+# Forgot to call end()
+
+# Good: use context manager
+with Stagehand() as client:
+    session = client.sessions.start(model_name="anthropic/claude-sonnet-4-6")
+    client.sessions.navigate(session.data.session_id, url="https://example.com")
+    # Automatically cleaned up
+```
+
+### Graceful shutdown
+
+```python
+import signal
+import sys
+
+session_id = None
+
+def signal_handler(sig, frame):
+    if session_id:
+        print("\nCleaning up session...")
+        client.sessions.end(session_id)
+    sys.exit(0)
+
+signal.signal(signal.SIGINT, signal_handler)
+
+client = Stagehand()
+session = client.sessions.start(model_name="anthropic/claude-sonnet-4-6")
+session_id = session.data.session_id
+
+try:
+    # Long-running automation
+    while True:
+        client.sessions.act(session_id, input="Do something")
+except KeyboardInterrupt:
+    pass
+```

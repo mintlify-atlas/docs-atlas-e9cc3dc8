@@ -1,0 +1,253 @@
+---
+title: "Extract"
+description: "Extract structured data from the current page using AI"
+---
+
+## Method Signature
+
+```python
+client.sessions.extract(
+    id: str,
+    instruction: str = None,
+    schema: dict = None,
+    frame_id: str = None,
+    options: dict = None,
+    stream_response: bool = False,
+) -> SessionExtractResponse | Stream[StreamEvent]
+```
+
+## Parameters
+
+<ParamField path="id" type="string" required>
+Unique session identifier returned from `sessions.start()`
+</ParamField>
+
+<ParamField path="instruction" type="string">
+Natural language instruction for what to extract (e.g., "extract all product names and prices")
+</ParamField>
+
+<ParamField path="schema" type="object">
+JSON Schema defining the structure of data to extract. The AI will return data matching this schema.
+
+Example:
+```python
+{
+    "type": "object",
+    "properties": {
+        "title": {"type": "string"},
+        "price": {"type": "number"},
+        "in_stock": {"type": "boolean"}
+    },
+    "required": ["title", "price"]
+}
+```
+</ParamField>
+
+<ParamField path="frame_id" type="string">
+Target frame ID for the extraction. If not specified, extracts from the main frame.
+</ParamField>
+
+<ParamField path="options" type="object">
+Extraction options.
+
+<Expandable title="Options properties">
+  <ParamField path="model" type="object | string">
+  Model configuration object or model name string (e.g., `openai/gpt-4o`)
+  </ParamField>
+
+  <ParamField path="selector" type="string">
+  CSS selector to scope extraction to a specific element
+  </ParamField>
+
+  <ParamField path="timeout" type="number">
+  Timeout in milliseconds for the extraction
+  </ParamField>
+</Expandable>
+</ParamField>
+
+<ParamField path="stream_response" type="boolean">
+Whether to stream the response via Server-Sent Events (SSE). When `True`, returns a `Stream[StreamEvent]`.
+
+You must also set `x_stream_response="true"` header parameter.
+</ParamField>
+
+## Response
+
+<ResponseField name="success" type="boolean" required>
+Indicates whether the request was successful
+</ResponseField>
+
+<ResponseField name="data" type="object" required>
+<Expandable title="Data properties">
+  <ResponseField name="result" type="object" required>
+  Extracted data matching the requested schema
+  </ResponseField>
+
+  <ResponseField name="action_id" type="string">
+  Action ID for tracking
+  </ResponseField>
+</Expandable>
+</ResponseField>
+
+## Examples
+
+### Basic extraction with schema
+
+```python
+from stagehand import Stagehand
+
+client = Stagehand()
+session = client.sessions.start(model_name="anthropic/claude-sonnet-4-6")
+
+client.sessions.navigate(session.data.session_id, url="https://news.ycombinator.com")
+
+# Extract structured data
+response = client.sessions.extract(
+    session.data.session_id,
+    instruction="extract the text of the top comment",
+    schema={
+        "type": "object",
+        "properties": {
+            "commentText": {"type": "string"},
+            "author": {"type": "string"},
+        },
+        "required": ["commentText"],
+    },
+)
+
+print(f"Comment: {response.data.result['commentText']}")
+print(f"Author: {response.data.result.get('author', 'Unknown')}")
+```
+
+### Streaming extraction
+
+```python
+# Stream the extraction progress
+stream = client.sessions.extract(
+    session.data.session_id,
+    instruction="extract all product information",
+    schema={
+        "type": "array",
+        "items": {
+            "type": "object",
+            "properties": {
+                "name": {"type": "string"},
+                "price": {"type": "number"},
+            },
+        },
+    },
+    stream_response=True,
+    x_stream_response="true",
+)
+
+for event in stream:
+    print(f"Event: {event.type}")
+```
+
+### Extract from specific element
+
+```python
+response = client.sessions.extract(
+    session.data.session_id,
+    instruction="extract user profile information",
+    schema={
+        "type": "object",
+        "properties": {
+            "name": {"type": "string"},
+            "email": {"type": "string"},
+            "role": {"type": "string"},
+        },
+        "required": ["name"],
+    },
+    options={
+        "selector": ".user-profile",
+        "timeout": 10000,
+    },
+)
+```
+
+### Extract array of items
+
+```python
+response = client.sessions.extract(
+    session.data.session_id,
+    instruction="extract all articles from the page",
+    schema={
+        "type": "array",
+        "items": {
+            "type": "object",
+            "properties": {
+                "title": {"type": "string"},
+                "url": {"type": "string"},
+                "author": {"type": "string"},
+                "published_date": {"type": "string"},
+            },
+            "required": ["title", "url"],
+        },
+    },
+)
+
+for article in response.data.result:
+    print(f"Title: {article['title']}")
+    print(f"URL: {article['url']}")
+```
+
+### Complex nested schema
+
+```python
+response = client.sessions.extract(
+    session.data.session_id,
+    instruction="extract product catalog",
+    schema={
+        "type": "object",
+        "properties": {
+            "category": {"type": "string"},
+            "products": {
+                "type": "array",
+                "items": {
+                    "type": "object",
+                    "properties": {
+                        "name": {"type": "string"},
+                        "price": {"type": "number"},
+                        "ratings": {
+                            "type": "object",
+                            "properties": {
+                                "average": {"type": "number"},
+                                "count": {"type": "integer"},
+                            },
+                        },
+                    },
+                },
+            },
+        },
+    },
+)
+```
+
+### Async extraction
+
+```python
+import asyncio
+from stagehand import AsyncStagehand
+
+async def main():
+    async with AsyncStagehand() as client:
+        session = await client.sessions.start(model_name="anthropic/claude-sonnet-4-6")
+        await client.sessions.navigate(session.data.session_id, url="https://example.com")
+        
+        response = await client.sessions.extract(
+            session.data.session_id,
+            instruction="extract contact information",
+            schema={
+                "type": "object",
+                "properties": {
+                    "email": {"type": "string"},
+                    "phone": {"type": "string"},
+                },
+            },
+        )
+        
+        print(response.data.result)
+
+asyncio.run(main())
+```

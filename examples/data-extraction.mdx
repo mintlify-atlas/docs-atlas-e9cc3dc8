@@ -1,0 +1,439 @@
+---
+title: "Data Extraction"
+description: "Extract structured data from web pages using Stagehand's extract() method with JSON schemas"
+---
+
+## Overview
+
+Stagehand's `extract()` method allows you to pull structured data from web pages using natural language instructions and JSON schemas. The AI understands your schema and extracts the data in the exact format you need.
+
+## Basic Extraction
+
+Here's a simple example extracting a comment and author from Hacker News:
+
+```python
+from stagehand import AsyncStagehand
+import asyncio
+import os
+
+async def main():
+    async with AsyncStagehand(
+        browserbase_api_key=os.environ.get("BROWSERBASE_API_KEY"),
+        browserbase_project_id=os.environ.get("BROWSERBASE_PROJECT_ID"),
+        model_api_key=os.environ.get("MODEL_API_KEY"),
+    ) as client:
+        session = await client.sessions.start(
+            model_name="anthropic/claude-sonnet-4-6",
+        )
+
+        try:
+            # Navigate to a comments page
+            await session.navigate(url="https://news.ycombinator.com")
+            
+            # Click to get to comments (example from full_example.py)
+            await session.act(
+                input="click the comments link for the top post",
+                stream_response=True,
+                x_stream_response="true",
+            )
+
+            # Extract structured data
+            extract_stream = await session.extract(
+                instruction="extract the text of the top comment on this page",
+                schema={
+                    "type": "object",
+                    "properties": {
+                        "commentText": {
+                            "type": "string",
+                            "description": "The text content of the top comment"
+                        },
+                        "author": {
+                            "type": "string",
+                            "description": "The username of the comment author"
+                        },
+                    },
+                    "required": ["commentText"],
+                },
+                stream_response=True,
+                x_stream_response="true",
+            )
+
+            # Process the streaming response
+            async for event in extract_stream:
+                if event.type == "log":
+                    print(f"[log] {event.data.message}")
+                elif event.data.status == "finished":
+                    result = event.data.result
+                    print(f"Extracted data: {result}")
+                    # result will be: {"commentText": "...", "author": "..."}
+
+        finally:
+            await session.end()
+
+asyncio.run(main())
+```
+
+## Defining Schemas
+
+JSON schemas define the structure of the data you want to extract. Stagehand uses standard JSON Schema format:
+
+### Simple Object Schema
+
+```python
+schema = {
+    "type": "object",
+    "properties": {
+        "title": {"type": "string"},
+        "price": {"type": "number"},
+        "inStock": {"type": "boolean"},
+    },
+    "required": ["title", "price"],
+}
+```
+
+### Array of Objects
+
+Extract multiple items like a list of products:
+
+```python
+schema = {
+    "type": "array",
+    "items": {
+        "type": "object",
+        "properties": {
+            "name": {"type": "string"},
+            "price": {"type": "number"},
+            "rating": {"type": "number"},
+        },
+        "required": ["name", "price"],
+    },
+}
+
+# Use it
+extract_stream = await session.extract(
+    instruction="extract all products on this page with their names, prices, and ratings",
+    schema=schema,
+    stream_response=True,
+    x_stream_response="true",
+)
+```
+
+### Nested Objects
+
+Extract complex nested data:
+
+```python
+schema = {
+    "type": "object",
+    "properties": {
+        "article": {
+            "type": "object",
+            "properties": {
+                "title": {"type": "string"},
+                "author": {
+                    "type": "object",
+                    "properties": {
+                        "name": {"type": "string"},
+                        "bio": {"type": "string"},
+                    },
+                },
+                "tags": {
+                    "type": "array",
+                    "items": {"type": "string"},
+                },
+            },
+        },
+    },
+}
+```
+
+### With Descriptions
+
+Add descriptions to help the AI understand what to extract:
+
+```python
+schema = {
+    "type": "object",
+    "properties": {
+        "productName": {
+            "type": "string",
+            "description": "The full name of the product as displayed on the page",
+        },
+        "currentPrice": {
+            "type": "number",
+            "description": "The current sale price, not the original price",
+        },
+        "availability": {
+            "type": "string",
+            "description": "Whether the product is in stock, out of stock, or on backorder",
+            "enum": ["in_stock", "out_of_stock", "backorder"],
+        },
+    },
+    "required": ["productName", "currentPrice"],
+}
+```
+
+## Real-World Examples
+
+### Extracting Article Metadata
+
+```python
+schema = {
+    "type": "object",
+    "properties": {
+        "headline": {"type": "string"},
+        "publishDate": {"type": "string"},
+        "author": {"type": "string"},
+        "excerpt": {"type": "string"},
+        "readTime": {"type": "string"},
+    },
+    "required": ["headline"],
+}
+
+extract_stream = await session.extract(
+    instruction="extract the article metadata including headline, publish date, author, excerpt, and estimated read time",
+    schema=schema,
+    stream_response=True,
+    x_stream_response="true",
+)
+```
+
+### Scraping Product Listings
+
+```python
+schema = {
+    "type": "array",
+    "items": {
+        "type": "object",
+        "properties": {
+            "title": {"type": "string"},
+            "price": {"type": "number"},
+            "rating": {"type": "number"},
+            "reviewCount": {"type": "integer"},
+            "imageUrl": {"type": "string"},
+            "productUrl": {"type": "string"},
+        },
+        "required": ["title", "price"],
+    },
+}
+
+extract_stream = await session.extract(
+    instruction="extract all products visible on this page including their titles, prices, ratings, review counts, and URLs",
+    schema=schema,
+    stream_response=True,
+    x_stream_response="true",
+)
+```
+
+### Extracting Contact Information
+
+```python
+schema = {
+    "type": "object",
+    "properties": {
+        "companyName": {"type": "string"},
+        "email": {"type": "string"},
+        "phone": {"type": "string"},
+        "address": {
+            "type": "object",
+            "properties": {
+                "street": {"type": "string"},
+                "city": {"type": "string"},
+                "state": {"type": "string"},
+                "zip": {"type": "string"},
+            },
+        },
+        "socialMedia": {
+            "type": "object",
+            "properties": {
+                "twitter": {"type": "string"},
+                "linkedin": {"type": "string"},
+                "facebook": {"type": "string"},
+            },
+        },
+    },
+}
+
+extract_stream = await session.extract(
+    instruction="extract all contact information from this page including company name, email, phone, address, and social media links",
+    schema=schema,
+    stream_response=True,
+    x_stream_response="true",
+)
+```
+
+## Streaming Helper
+
+Here's a reusable helper function to process extraction streams:
+
+```python
+async def stream_to_result(stream, label: str):
+    """Process a Stagehand streaming response and return the result."""
+    result_payload = None
+    async for event in stream:
+        if event.type == "log":
+            print(f"[{label}][log] {event.data.message}")
+            continue
+
+        status = event.data.status
+        print(f"[{label}][system] status={status}")
+        
+        if status == "finished":
+            result_payload = event.data.result
+        elif status == "error":
+            error_message = event.data.error or "unknown error"
+            raise RuntimeError(f"{label} stream reported error: {error_message}")
+
+    return result_payload
+
+# Use it
+extract_stream = await session.extract(
+    instruction="extract the page data",
+    schema=my_schema,
+    stream_response=True,
+    x_stream_response="true",
+)
+
+data = await stream_to_result(extract_stream, "extract")
+print(f"Extracted: {data}")
+```
+
+## With Playwright Integration
+
+You can pass a Playwright page to the extract method:
+
+```python
+from playwright.sync_api import sync_playwright
+from stagehand import Stagehand
+
+with Stagehand(...) as client:
+    session = client.sessions.start(
+        model_name="anthropic/claude-sonnet-4-6",
+        browser={"type": "browserbase"},
+    )
+
+    cdp_url = session.data.cdp_url
+
+    with sync_playwright() as p:
+        browser = p.chromium.connect_over_cdp(cdp_url)
+        context = browser.contexts[0]
+        page = context.pages[0]
+
+        page.goto("https://example.com")
+
+        # Pass the page object to extract
+        extract_stream = session.extract(
+            instruction="Extract the page title and the primary heading (h1) text",
+            schema={
+                "type": "object",
+                "properties": {
+                    "title": {"type": "string"},
+                    "h1": {"type": "string"},
+                },
+                "required": ["title", "h1"],
+            },
+            page=page,  # Auto-detects frame_id
+            stream_response=True,
+            x_stream_response="true",
+        )
+
+        for event in extract_stream:
+            if event.data.status == "finished":
+                print(f"Extracted: {event.data.result}")
+
+        browser.close()
+    session.end()
+```
+
+## Error Handling
+
+Handle extraction errors gracefully:
+
+```python
+try:
+    extract_stream = await session.extract(
+        instruction="extract product data",
+        schema=product_schema,
+        stream_response=True,
+        x_stream_response="true",
+    )
+
+    async for event in extract_stream:
+        if event.data.status == "error":
+            print(f"Extraction failed: {event.data.error}")
+            # Handle the error - maybe retry or skip
+        elif event.data.status == "finished":
+            result = event.data.result
+            if not result:
+                print("No data extracted")
+            else:
+                print(f"Successfully extracted: {result}")
+
+except Exception as e:
+    print(f"Extraction error: {e}")
+```
+
+## Best Practices
+
+<Tip>
+**Be specific with instructions**: Clear instructions help the AI find the right data. Instead of "extract data", use "extract the product title, price, and rating from the first product card".
+</Tip>
+
+<Tip>
+**Add descriptions to schema properties**: Descriptions help the AI understand what data to extract, especially for ambiguous fields.
+</Tip>
+
+<Warning>
+**Validate extracted data**: Always check that required fields are present and data types are correct before using the extracted data.
+</Warning>
+
+<Note>
+**Use `additionalProperties: false`**: This prevents the AI from adding unexpected fields to your extracted data.
+</Note>
+
+## Common Pitfalls
+
+### Required Fields Not Returned
+
+If required fields aren't on the page, extraction may fail. Use optional fields when possible:
+
+```python
+schema = {
+    "type": "object",
+    "properties": {
+        "title": {"type": "string"},
+        "price": {"type": "number"},
+        "sale_price": {"type": "number"},  # Optional
+    },
+    "required": ["title", "price"],  # Only require what's always present
+}
+```
+
+### Type Mismatches
+
+Be careful with number vs. string types. Prices like "$19.99" need parsing:
+
+```python
+# Better to extract as string and parse later
+"price": {"type": "string", "description": "Price including currency symbol"}
+
+# Or extract as number if you want just the value
+"price": {"type": "number", "description": "Price as a number without currency symbol"}
+```
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Basic Automation" icon="bolt" href="/examples/basic-automation">
+    Learn basic Stagehand automation patterns
+  </Card>
+  <Card title="Multi-Step Workflows" icon="list-check" href="/examples/multi-step-workflows">
+    Combine extraction with navigation and actions
+  </Card>
+  <Card title="Playwright Integration" icon="theater-masks" href="/examples/playwright-integration">
+    Use Playwright with Stagehand for advanced control
+  </Card>
+  <Card title="API Reference" icon="code" href="/api/sessions/extract">
+    Complete extract() method documentation
+  </Card>
+</CardGroup>

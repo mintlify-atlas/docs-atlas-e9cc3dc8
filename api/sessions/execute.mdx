@@ -1,0 +1,343 @@
+---
+title: "Execute"
+description: "Run an autonomous AI agent to perform complex multi-step browser tasks"
+---
+
+## Method Signature
+
+```python
+client.sessions.execute(
+    id: str,
+    agent_config: dict,
+    execute_options: dict,
+    frame_id: str = None,
+    should_cache: bool = None,
+    stream_response: bool = False,
+) -> SessionExecuteResponse | Stream[StreamEvent]
+```
+
+## Parameters
+
+<ParamField path="id" type="string" required>
+Unique session identifier returned from `sessions.start()`
+</ParamField>
+
+<ParamField path="agent_config" type="object" required>
+Configuration for the autonomous agent.
+
+<Expandable title="Agent config properties">
+  <ParamField path="model" type="object | string">
+  Model configuration object or model name string (e.g., `openai/gpt-4o`)
+  </ParamField>
+
+  <ParamField path="execution_model" type="object | string">
+  Model for tool execution (observe/act calls). If not specified, inherits from the main model.
+  </ParamField>
+
+  <ParamField path="mode" type="string">
+  Tool mode for the agent:
+  - `dom`: DOM-based actions
+  - `hybrid`: Combination of DOM and Computer Use Anthropic (CUA)
+  - `cua`: Computer Use Anthropic mode
+  
+  If set, overrides the `cua` parameter.
+  </ParamField>
+
+  <ParamField path="cua" type="boolean">
+  Deprecated. Use `mode: "cua"` instead. If both are provided, `mode` takes precedence.
+  </ParamField>
+
+  <ParamField path="system_prompt" type="string">
+  Custom system prompt for the agent
+  </ParamField>
+
+  <ParamField path="provider" type="string">
+  AI provider (legacy, use model instead): `openai`, `anthropic`, `google`, `microsoft`
+  </ParamField>
+</Expandable>
+</ParamField>
+
+<ParamField path="execute_options" type="object" required>
+Execution options for the agent.
+
+<Expandable title="Execute options properties">
+  <ParamField path="instruction" type="string" required>
+  Natural language instruction for the agent (e.g., "Find the cheapest flight to Paris")
+  </ParamField>
+
+  <ParamField path="max_steps" type="number">
+  Maximum number of steps the agent can take
+  </ParamField>
+
+  <ParamField path="highlight_cursor" type="boolean">
+  Whether to visually highlight the cursor during execution
+  </ParamField>
+</Expandable>
+</ParamField>
+
+<ParamField path="frame_id" type="string">
+Target frame ID for the agent. If not specified, executes in the main frame.
+</ParamField>
+
+<ParamField path="should_cache" type="boolean">
+If true, the server captures a cache entry and returns it to the client for future reuse
+</ParamField>
+
+<ParamField path="stream_response" type="boolean">
+Whether to stream the response via Server-Sent Events (SSE). When `True`, returns a `Stream[StreamEvent]`.
+
+You must also set `x_stream_response="true"` header parameter.
+</ParamField>
+
+## Response
+
+<ResponseField name="success" type="boolean" required>
+Indicates whether the request was successful
+</ResponseField>
+
+<ResponseField name="data" type="object" required>
+<Expandable title="Data properties">
+  <ResponseField name="result" type="object" required>
+  <Expandable title="Result properties">
+    <ResponseField name="success" type="boolean" required>
+    Whether the agent completed successfully
+    </ResponseField>
+
+    <ResponseField name="completed" type="boolean" required>
+    Whether the agent finished its task
+    </ResponseField>
+
+    <ResponseField name="message" type="string" required>
+    Summary of what the agent accomplished
+    </ResponseField>
+
+    <ResponseField name="actions" type="array" required>
+    List of actions the agent took
+    
+    <Expandable title="Action properties">
+      <ResponseField name="type" type="string" required>
+      Type of action taken
+      </ResponseField>
+
+      <ResponseField name="action" type="string">
+      Action description
+      </ResponseField>
+
+      <ResponseField name="reasoning" type="string">
+      Agent's reasoning for taking this action
+      </ResponseField>
+
+      <ResponseField name="page_url" type="string">
+      URL of the page when action was taken
+      </ResponseField>
+
+      <ResponseField name="time_ms" type="number">
+      Time taken for this action in milliseconds
+      </ResponseField>
+    </Expandable>
+    </ResponseField>
+
+    <ResponseField name="usage" type="object">
+    Token usage statistics
+    
+    <Expandable title="Usage properties">
+      <ResponseField name="input_tokens" type="number" required>
+      Number of input tokens used
+      </ResponseField>
+
+      <ResponseField name="output_tokens" type="number" required>
+      Number of output tokens generated
+      </ResponseField>
+
+      <ResponseField name="cached_input_tokens" type="number">
+      Number of cached input tokens
+      </ResponseField>
+
+      <ResponseField name="inference_time_ms" type="number" required>
+      Total inference time in milliseconds
+      </ResponseField>
+    </Expandable>
+    </ResponseField>
+  </Expandable>
+  </ResponseField>
+
+  <ResponseField name="cache_entry" type="object">
+  Cache entry for future reuse (only present if `should_cache` is true)
+  
+  <Expandable title="Cache entry properties">
+    <ResponseField name="cache_key" type="string" required>
+    Opaque cache identifier
+    </ResponseField>
+
+    <ResponseField name="entry" type="object" required>
+    Serialized cache entry that can be written to disk
+    </ResponseField>
+  </Expandable>
+  </ResponseField>
+</Expandable>
+</ResponseField>
+
+## Examples
+
+### Basic agent execution
+
+```python
+from stagehand import Stagehand
+
+client = Stagehand()
+session = client.sessions.start(model_name="anthropic/claude-sonnet-4-6")
+
+client.sessions.navigate(session.data.session_id, url="https://example.com")
+
+# Run an autonomous agent
+response = client.sessions.execute(
+    session.data.session_id,
+    agent_config={
+        "model": {"model_name": "anthropic/claude-opus-4-6"},
+    },
+    execute_options={
+        "instruction": "Find the contact page and extract the email address",
+        "max_steps": 5,
+    },
+)
+
+print(f"Agent completed: {response.data.result.completed}")
+print(f"Message: {response.data.result.message}")
+for action in response.data.result.actions:
+    print(f"- {action.type}: {action.reasoning}")
+```
+
+### Streaming agent execution
+
+```python
+# Stream the agent's progress
+stream = client.sessions.execute(
+    session.data.session_id,
+    agent_config={
+        "model": {"model_name": "openai/gpt-4o"},
+    },
+    execute_options={
+        "instruction": "Search for 'Python tutorials' and click the first result",
+        "max_steps": 10,
+        "highlight_cursor": True,
+    },
+    stream_response=True,
+    x_stream_response="true",
+)
+
+for event in stream:
+    if event.type == "log":
+        print(f"Agent log: {event.data}")
+```
+
+### Agent with custom system prompt
+
+```python
+response = client.sessions.execute(
+    session.data.session_id,
+    agent_config={
+        "model": {"model_name": "anthropic/claude-sonnet-4-6"},
+        "system_prompt": "You are a shopping assistant. Always look for the best deals.",
+    },
+    execute_options={
+        "instruction": "Find the cheapest laptop under $1000",
+        "max_steps": 15,
+    },
+)
+```
+
+### Agent with caching
+
+```python
+# First execution with caching enabled
+response = client.sessions.execute(
+    session.data.session_id,
+    agent_config={"model": {"model_name": "openai/gpt-4o"}},
+    execute_options={
+        "instruction": "Fill out the contact form",
+        "max_steps": 5,
+    },
+    should_cache=True,
+)
+
+if response.data.cache_entry:
+    # Save the cache entry for future use
+    cache_key = response.data.cache_entry.cache_key
+    cache_data = response.data.cache_entry.entry
+    print(f"Cache key: {cache_key}")
+```
+
+### Different execution modes
+
+```python
+# DOM mode (default)
+response = client.sessions.execute(
+    session.data.session_id,
+    agent_config={
+        "model": {"model_name": "anthropic/claude-sonnet-4-6"},
+        "mode": "dom",
+    },
+    execute_options={
+        "instruction": "Navigate to the pricing page",
+    },
+)
+
+# CUA mode for complex interactions
+response = client.sessions.execute(
+    session.data.session_id,
+    agent_config={
+        "model": {"model_name": "anthropic/claude-opus-4-6"},
+        "mode": "cua",
+    },
+    execute_options={
+        "instruction": "Draw a diagram using the drawing tool",
+        "max_steps": 20,
+    },
+)
+```
+
+### Async agent execution
+
+```python
+import asyncio
+from stagehand import AsyncStagehand
+
+async def main():
+    async with AsyncStagehand() as client:
+        session = await client.sessions.start(model_name="anthropic/claude-sonnet-4-6")
+        await client.sessions.navigate(session.data.session_id, url="https://example.com")
+        
+        response = await client.sessions.execute(
+            session.data.session_id,
+            agent_config={"model": {"model_name": "openai/gpt-4o"}},
+            execute_options={
+                "instruction": "Find and click the 'Learn More' link",
+                "max_steps": 3,
+            },
+        )
+        
+        print(f"Success: {response.data.result.success}")
+        print(f"Actions taken: {len(response.data.result.actions)}")
+
+asyncio.run(main())
+```
+
+### Monitoring token usage
+
+```python
+response = client.sessions.execute(
+    session.data.session_id,
+    agent_config={"model": {"model_name": "anthropic/claude-sonnet-4-6"}},
+    execute_options={
+        "instruction": "Research and summarize the company's mission",
+        "max_steps": 10,
+    },
+)
+
+if response.data.result.usage:
+    usage = response.data.result.usage
+    print(f"Input tokens: {usage.input_tokens}")
+    print(f"Output tokens: {usage.output_tokens}")
+    print(f"Cached tokens: {usage.cached_input_tokens or 0}")
+    print(f"Inference time: {usage.inference_time_ms}ms")
+```

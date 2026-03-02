@@ -1,0 +1,308 @@
+---
+title: "Exception Types"
+description: "Reference for all exception classes in the Stagehand Python SDK"
+---
+
+The Stagehand Python SDK defines a hierarchy of exceptions that inherit from `stagehand.APIError`. All exceptions are automatically raised by the SDK when errors occur during API calls.
+
+## Exception Hierarchy
+
+```
+Exception
+└── StagehandError
+    └── APIError
+        ├── APIResponseValidationError
+        ├── APIStatusError
+        │   ├── BadRequestError (400)
+        │   ├── AuthenticationError (401)
+        │   ├── PermissionDeniedError (403)
+        │   ├── NotFoundError (404)
+        │   ├── ConflictError (409)
+        │   ├── UnprocessableEntityError (422)
+        │   ├── RateLimitError (429)
+        │   └── InternalServerError (5xx)
+        └── APIConnectionError
+            └── APITimeoutError
+```
+
+## Base Exceptions
+
+### StagehandError
+
+The base exception class for all Stagehand-specific errors.
+
+```python
+class StagehandError(Exception):
+    pass
+```
+
+### APIError
+
+The base class for all API-related errors. Contains information about the failed request.
+
+**Attributes:**
+- `message` (str): A human-readable error message
+- `request` (httpx.Request): The HTTP request that caused the error
+- `body` (object | None): The API response body. If the API responded with valid JSON, this will be the decoded result. Otherwise, it will be the raw response. `None` if no response was received.
+
+```python
+import stagehand
+
+try:
+    session = client.sessions.start(model_name="invalid-model")
+except stagehand.APIError as e:
+    print(f"Error: {e.message}")
+    print(f"Request URL: {e.request.url}")
+    print(f"Response body: {e.body}")
+```
+
+## Status Code Exceptions
+
+### APIStatusError
+
+Raised when an API response has a status code of 4xx or 5xx.
+
+**Attributes:**
+- `status_code` (int): The HTTP status code
+- `response` (httpx.Response): The complete HTTP response object
+- `message` (str): Error message
+- `request` (httpx.Request): The HTTP request
+- `body` (object | None): The response body
+
+```python
+import stagehand
+
+try:
+    session = client.sessions.start(model_name="anthropic/claude-sonnet-4-6")
+except stagehand.APIStatusError as e:
+    print(f"Status code: {e.status_code}")
+    print(f"Response: {e.response}")
+```
+
+### BadRequestError
+
+Raised when the API returns a 400 status code, indicating the request was malformed or invalid.
+
+**Status Code:** `400`
+
+```python
+import stagehand
+
+try:
+    # Invalid request parameters
+    session = client.sessions.start()
+except stagehand.BadRequestError:
+    print("The request was invalid")
+```
+
+### AuthenticationError
+
+Raised when the API returns a 401 status code, indicating authentication failed.
+
+**Status Code:** `401`
+
+```python
+import stagehand
+
+try:
+    client = stagehand.Stagehand(
+        browserbase_api_key="invalid-key",
+        browserbase_project_id="project-id",
+        model_api_key="model-key",
+    )
+    session = client.sessions.start(model_name="anthropic/claude-sonnet-4-6")
+except stagehand.AuthenticationError:
+    print("Authentication failed - check your API keys")
+```
+
+### PermissionDeniedError
+
+Raised when the API returns a 403 status code, indicating the authenticated user lacks permission for the requested resource.
+
+**Status Code:** `403`
+
+```python
+import stagehand
+
+try:
+    # Attempting to access a resource without proper permissions
+    session = client.sessions.start(model_name="anthropic/claude-sonnet-4-6")
+except stagehand.PermissionDeniedError:
+    print("Access denied - insufficient permissions")
+```
+
+### NotFoundError
+
+Raised when the API returns a 404 status code, indicating the requested resource doesn't exist.
+
+**Status Code:** `404`
+
+```python
+import stagehand
+
+try:
+    # Attempting to access a non-existent session
+    client.sessions.end("non-existent-session-id")
+except stagehand.NotFoundError:
+    print("Session not found")
+```
+
+### ConflictError
+
+Raised when the API returns a 409 status code, indicating a conflict with the current state of the resource.
+
+**Status Code:** `409`
+
+```python
+import stagehand
+
+try:
+    # Resource conflict
+    session = client.sessions.start(model_name="anthropic/claude-sonnet-4-6")
+except stagehand.ConflictError:
+    print("Resource conflict detected")
+```
+
+### UnprocessableEntityError
+
+Raised when the API returns a 422 status code, indicating the request was well-formed but semantically incorrect.
+
+**Status Code:** `422`
+
+```python
+import stagehand
+
+try:
+    # Semantically invalid request
+    result = client.sessions.extract(
+        session_id,
+        instruction="extract data",
+        schema={"invalid": "schema"},
+    )
+except stagehand.UnprocessableEntityError:
+    print("Request validation failed")
+```
+
+### RateLimitError
+
+Raised when the API returns a 429 status code, indicating too many requests have been sent in a given time period.
+
+**Status Code:** `429`
+
+<Note>
+Rate limit errors are automatically retried by default. See the [Error Handling](/api/exceptions/handling#automatic-retries) page for details.
+</Note>
+
+```python
+import stagehand
+
+try:
+    session = client.sessions.start(model_name="anthropic/claude-sonnet-4-6")
+except stagehand.RateLimitError:
+    print("Rate limit exceeded - back off and retry")
+```
+
+### InternalServerError
+
+Raised when the API returns a 5xx status code, indicating a server-side error.
+
+**Status Code:** `500` and above
+
+<Note>
+Internal server errors are automatically retried by default. See the [Error Handling](/api/exceptions/handling#automatic-retries) page for details.
+</Note>
+
+```python
+import stagehand
+
+try:
+    session = client.sessions.start(model_name="anthropic/claude-sonnet-4-6")
+except stagehand.InternalServerError:
+    print("Server error - the request will be automatically retried")
+```
+
+## Connection Exceptions
+
+### APIConnectionError
+
+Raised when the library is unable to connect to the API due to network issues.
+
+**Attributes:**
+- `message` (str): Error message (default: "Connection error.")
+- `request` (httpx.Request): The HTTP request that failed
+- `body` (None): Always `None` for connection errors
+
+```python
+import stagehand
+
+try:
+    session = client.sessions.start(model_name="anthropic/claude-sonnet-4-6")
+except stagehand.APIConnectionError as e:
+    print("Could not connect to the API")
+    print(f"Underlying error: {e.__cause__}")  # httpx exception
+```
+
+### APITimeoutError
+
+Raised when a request times out. Inherits from `APIConnectionError`.
+
+**Default timeout:** 1 minute (60 seconds)
+
+<Note>
+Timeout errors are automatically retried twice by default. See the [Error Handling](/api/exceptions/handling#automatic-retries) page for details.
+</Note>
+
+```python
+import stagehand
+
+try:
+    # Long-running operation
+    result = client.sessions.act(
+        session_id,
+        input="perform complex action",
+    )
+except stagehand.APITimeoutError:
+    print("Request timed out")
+```
+
+## Validation Exceptions
+
+### APIResponseValidationError
+
+Raised when the API returns data that doesn't match the expected schema. Only raised when `_strict_response_validation=True` is set on the client.
+
+**Attributes:**
+- `response` (httpx.Response): The HTTP response
+- `status_code` (int): The HTTP status code
+- `message` (str): Validation error message
+- `request` (httpx.Request): The HTTP request
+- `body` (object | None): The response body
+
+```python
+from stagehand import AsyncStagehand, APIResponseValidationError
+
+try:
+    async with AsyncStagehand(_strict_response_validation=True) as client:
+        session = await client.sessions.start(model_name="anthropic/claude-sonnet-4-6")
+except APIResponseValidationError as e:
+    print(f"Response validation failed: {e}")
+    print(f"Status code: {e.status_code}")
+```
+
+## Catching All Exceptions
+
+To catch all SDK exceptions, catch `stagehand.APIError`:
+
+```python
+import stagehand
+from stagehand import AsyncStagehand
+
+async def main():
+    async with AsyncStagehand() as client:
+        try:
+            session = await client.sessions.start(model_name="anthropic/claude-sonnet-4-6")
+            await client.sessions.act(session.id, input="click the button")
+        except stagehand.APIError as e:
+            # Catches all SDK exceptions
+            print(f"An error occurred: {e.message}")
+```

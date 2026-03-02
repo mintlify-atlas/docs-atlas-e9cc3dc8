@@ -1,0 +1,295 @@
+---
+title: Acting on Pages
+description: Execute browser actions using natural language or Action objects
+---
+
+The `act()` method performs browser interactions like clicking, typing, scrolling, and form submission. You can use natural language instructions or pass Action objects from `observe()`.
+
+## Basic Usage
+
+### Using Natural Language
+
+```python
+import asyncio
+from stagehand import AsyncStagehand
+
+async def main():
+    async with AsyncStagehand() as client:
+        session = await client.sessions.start(
+            model_name="anthropic/claude-sonnet-4-6"
+        )
+        
+        await session.navigate(url="https://example.com")
+        
+        # Execute an action with natural language
+        response = await session.act(
+            input="click the 'Learn more' link"
+        )
+        
+        print(f"Action completed: {response.data.get('message')}")
+        print(f"Success: {response.data.get('success')}")
+        
+        await session.end()
+
+asyncio.run(main())
+```
+
+### Using Action Objects
+
+```python
+async def act_with_observe():
+    async with AsyncStagehand() as client:
+        session = await client.sessions.start(
+            model_name="anthropic/claude-sonnet-4-6"
+        )
+        
+        await session.navigate(url="https://news.ycombinator.com")
+        
+        # First observe to get available actions
+        observe_result = await session.observe(
+            instruction="find the comments link for the top post"
+        )
+        
+        if observe_result.data and len(observe_result.data) > 0:
+            # Execute the first action found
+            await session.act(
+                input=observe_result.data[0]  # Pass Action object
+            )
+        
+        await session.end()
+```
+
+## Streaming Responses
+
+Get real-time feedback during action execution:
+
+```python
+async def act_with_streaming():
+    async with AsyncStagehand() as client:
+        session = await client.sessions.start(
+            model_name="anthropic/claude-sonnet-4-6"
+        )
+        
+        await session.navigate(url="https://example.com")
+        
+        stream = await session.act(
+            input="Click the contact button and fill out the form",
+            stream_response=True,
+            x_stream_response="true"
+        )
+        
+        async for event in stream:
+            if event.type == "log":
+                print(f"[LOG] {event.data.message}")
+            elif event.type == "system":
+                status = event.data.status
+                print(f"[STATUS] {status}")
+                
+                if status == "finished":
+                    result = event.data.result
+                    print(f"Result: {result.get('message')}")
+                elif status == "error":
+                    error = event.data.error
+                    print(f"Error: {error}")
+        
+        await session.end()
+```
+
+## Advanced Options
+
+### Custom Timeout
+
+```python
+# Set a custom timeout for actions that might take longer
+await session.act(
+    input="scroll through the entire page and find the footer",
+    options={
+        "timeout": 30000  # 30 seconds in milliseconds
+    }
+)
+```
+
+### Using Variables
+
+```python
+# Use variables in your instructions
+user_email = "user@example.com"
+
+await session.act(
+    input="type {{email}} into the email field",
+    options={
+        "variables": {"email": user_email}
+    }
+)
+```
+
+### Custom Model
+
+```python
+# Use a different model for specific actions
+await session.act(
+    input="carefully analyze and click the correct button",
+    options={
+        "model": "anthropic/claude-opus-4-6"  # More powerful model
+    }
+)
+```
+
+### Targeting Iframes
+
+```python
+# Act within a specific iframe
+await session.act(
+    input="click the submit button",
+    frame_id="payment-iframe"
+)
+```
+
+## Parameters
+
+<ParamField path="input" type="string | Action" required>
+  Either a natural language instruction (string) or an Action object from `observe()`
+</ParamField>
+
+<ParamField path="frame_id" type="string">
+  Optional. ID of an iframe to target for the action
+</ParamField>
+
+<ParamField path="options" type="object">
+  Optional configuration:
+  - `model`: Model configuration or model name (e.g., `"openai/gpt-5-nano"`)
+  - `timeout`: Timeout in milliseconds for the action
+  - `variables`: Dictionary of variables to substitute in instructions
+</ParamField>
+
+<ParamField path="stream_response" type="boolean" default="false">
+  Enable SSE streaming for real-time progress updates
+</ParamField>
+
+<ParamField path="x_stream_response" type="string">
+  Set to `"true"` to enable server-side streaming (required with `stream_response=True`)
+</ParamField>
+
+<ParamField path="timeout" type="float">
+  Request-level timeout in seconds (overrides client default)
+</ParamField>
+
+## Return Value
+
+### Non-Streaming
+
+Returns `SessionActResponse` with:
+
+```python
+response.data  # Dict with 'message' and 'success' keys
+response.data.get('message')  # Description of what was done
+response.data.get('success')  # Boolean indicating success
+```
+
+### Streaming
+
+Returns an async iterator of `StreamEvent` objects:
+
+```python
+event.type  # "log" or "system"
+event.data.status  # "running", "finished", or "error"
+event.data.result  # Final result when status is "finished"
+event.data.error  # Error message if status is "error"
+event.data.message  # Log message for debugging
+```
+
+## Common Actions
+
+### Clicking
+
+```python
+await session.act(input="click the login button")
+await session.act(input="click the first item in the list")
+await session.act(input="click accept on the cookie banner")
+```
+
+### Typing
+
+```python
+await session.act(input="type 'hello world' into the search box")
+await session.act(
+    input="type {{username}} in the username field",
+    options={"variables": {"username": "john_doe"}}
+)
+```
+
+### Form Interactions
+
+```python
+# Fill out a complete form
+await session.act(
+    input="""
+    Fill out the contact form:
+    - Name: John Doe
+    - Email: john@example.com
+    - Message: I'd like more information
+    - Click submit
+    """
+)
+```
+
+### Navigation
+
+```python
+await session.act(input="scroll down to the footer")
+await session.act(input="go to the next page using the pagination")
+await session.act(input="click the back button")
+```
+
+## Best Practices
+
+<Tip>
+Be specific in your instructions. "Click the blue submit button at the bottom of the form" is better than "click submit".
+</Tip>
+
+<Warning>
+Always check the result to ensure the action succeeded before proceeding with dependent actions.
+</Warning>
+
+<Info>
+For complex multi-step workflows, consider using the `execute()` agent instead of chaining multiple `act()` calls.
+</Info>
+
+## Error Handling
+
+```python
+import stagehand
+
+try:
+    response = await session.act(
+        input="click the non-existent button"
+    )
+    
+    if not response.data.get('success'):
+        print(f"Action failed: {response.data.get('message')}")
+        
+except stagehand.APITimeoutError:
+    print("Action timed out")
+except stagehand.APIStatusError as e:
+    print(f"API error: {e.status_code} - {e.message}")
+```
+
+## Sync vs Async
+
+The SDK supports both synchronous and asynchronous usage:
+
+```python
+# Async (recommended)
+from stagehand import AsyncStagehand
+
+async with AsyncStagehand() as client:
+    session = await client.sessions.start(model_name="anthropic/claude-sonnet-4-6")
+    await session.act(input="click the button")
+
+# Sync
+from stagehand import Stagehand
+
+with Stagehand() as client:
+    session = client.sessions.start(model_name="anthropic/claude-sonnet-4-6")
+    client.sessions.act(session.id, input="click the button")
+```

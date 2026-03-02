@@ -1,0 +1,189 @@
+---
+title: "Observe"
+description: "Identify available actions on the current page using AI"
+---
+
+## Method Signature
+
+```python
+client.sessions.observe(
+    id: str,
+    instruction: str = None,
+    frame_id: str = None,
+    options: dict = None,
+    stream_response: bool = False,
+) -> SessionObserveResponse | Stream[StreamEvent]
+```
+
+## Parameters
+
+<ParamField path="id" type="string" required>
+Unique session identifier returned from `sessions.start()`
+</ParamField>
+
+<ParamField path="instruction" type="string">
+Natural language instruction for what actions to find (e.g., "find all login buttons")
+</ParamField>
+
+<ParamField path="frame_id" type="string">
+Target frame ID for the observation. If not specified, observes the main frame.
+</ParamField>
+
+<ParamField path="options" type="object">
+Observation options.
+
+<Expandable title="Options properties">
+  <ParamField path="model" type="object | string">
+  Model configuration object or model name string (e.g., `openai/gpt-4o`)
+  </ParamField>
+
+  <ParamField path="selector" type="string">
+  CSS selector to scope observation to a specific element
+  </ParamField>
+
+  <ParamField path="timeout" type="number">
+  Timeout in milliseconds for the observation
+  </ParamField>
+</Expandable>
+</ParamField>
+
+<ParamField path="stream_response" type="boolean">
+Whether to stream the response via Server-Sent Events (SSE). When `True`, returns a `Stream[StreamEvent]`.
+
+You must also set `x_stream_response="true"` header parameter.
+</ParamField>
+
+## Response
+
+<ResponseField name="success" type="boolean" required>
+Indicates whether the request was successful
+</ResponseField>
+
+<ResponseField name="data" type="object" required>
+<Expandable title="Data properties">
+  <ResponseField name="result" type="array" required>
+  List of Action objects that can be performed
+  
+  <Expandable title="Action properties">
+    <ResponseField name="description" type="string" required>
+    Human-readable description of the action
+    </ResponseField>
+
+    <ResponseField name="selector" type="string" required>
+    CSS selector or XPath for the element
+    </ResponseField>
+
+    <ResponseField name="method" type="string">
+    The method to execute (click, fill, etc.)
+    </ResponseField>
+
+    <ResponseField name="arguments" type="array">
+    Arguments to pass to the method
+    </ResponseField>
+
+    <ResponseField name="backend_node_id" type="number">
+    Backend node ID for the element
+    </ResponseField>
+  </Expandable>
+  </ResponseField>
+
+  <ResponseField name="action_id" type="string">
+  Action ID for tracking
+  </ResponseField>
+</Expandable>
+</ResponseField>
+
+## Examples
+
+### Basic observation
+
+```python
+from stagehand import Stagehand
+
+client = Stagehand()
+session = client.sessions.start(model_name="anthropic/claude-sonnet-4-6")
+
+client.sessions.navigate(session.data.session_id, url="https://news.ycombinator.com")
+
+# Find actions matching the instruction
+response = client.sessions.observe(
+    session.data.session_id,
+    instruction="find the link to view comments for the top post",
+)
+
+for action in response.data.result:
+    print(f"Found: {action.description}")
+    print(f"Selector: {action.selector}")
+    print(f"Method: {action.method}")
+```
+
+### Streaming observation
+
+```python
+# Stream the observation progress
+stream = client.sessions.observe(
+    session.data.session_id,
+    instruction="find all clickable buttons",
+    stream_response=True,
+    x_stream_response="true",
+)
+
+for event in stream:
+    print(f"Event type: {event.type}")
+    print(f"Data: {event.data}")
+```
+
+### Scoped observation
+
+```python
+# Only observe within a specific element
+response = client.sessions.observe(
+    session.data.session_id,
+    instruction="find submit buttons",
+    options={
+        "selector": "#login-form",
+        "timeout": 10000,
+    },
+)
+```
+
+### Using observed actions with act()
+
+```python
+# Observe actions, then execute one
+observe_response = client.sessions.observe(
+    session.data.session_id,
+    instruction="find the search input",
+)
+
+if observe_response.data.result:
+    action = observe_response.data.result[0]
+    
+    # Use the action object with act()
+    act_response = client.sessions.act(
+        session.data.session_id,
+        input=action,
+    )
+```
+
+### Async observation
+
+```python
+import asyncio
+from stagehand import AsyncStagehand
+
+async def main():
+    async with AsyncStagehand() as client:
+        session = await client.sessions.start(model_name="anthropic/claude-sonnet-4-6")
+        await client.sessions.navigate(session.data.session_id, url="https://example.com")
+        
+        response = await client.sessions.observe(
+            session.data.session_id,
+            instruction="find navigation links",
+        )
+        
+        for action in response.data.result:
+            print(action.description)
+
+asyncio.run(main())
+```

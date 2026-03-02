@@ -1,0 +1,359 @@
+---
+title: "Playwright Integration"
+description: "Integrate Stagehand with Playwright for advanced browser control and automation"
+---
+
+## Overview
+
+Stagehand seamlessly integrates with Playwright, allowing you to combine AI-powered automation with Playwright's powerful browser control capabilities. You can attach Playwright to the same browser session that Stagehand controls, giving you the best of both worlds.
+
+## Remote Browser with Browserbase
+
+The most common pattern is using Stagehand with a remote browser managed by Browserbase. Stagehand provides a CDP (Chrome DevTools Protocol) URL that Playwright can connect to:
+
+```python
+import os
+from playwright.sync_api import sync_playwright
+from stagehand import Stagehand
+
+def main():
+    with Stagehand(
+        server="remote",
+        browserbase_api_key=os.environ.get("BROWSERBASE_API_KEY"),
+        browserbase_project_id=os.environ.get("BROWSERBASE_PROJECT_ID"),
+        model_api_key=os.environ.get("MODEL_API_KEY"),
+    ) as client:
+        # Start Stagehand session with Browserbase
+        session = client.sessions.start(
+            model_name="anthropic/claude-sonnet-4-6",
+            browser={"type": "browserbase"},
+        )
+
+        # Get the CDP URL from the session
+        cdp_url = session.data.cdp_url
+        if not cdp_url:
+            raise RuntimeError("No cdp_url returned from the API")
+
+        # Connect Playwright to the same browser
+        with sync_playwright() as p:
+            browser = p.chromium.connect_over_cdp(cdp_url)
+            context = browser.contexts[0] if browser.contexts else browser.new_context()
+            page = context.pages[0] if context.pages else context.new_page()
+
+            # Navigate using Stagehand
+            client.sessions.navigate(session.id, url="https://news.ycombinator.com")
+            page.wait_for_load_state("domcontentloaded")
+
+            # Use Stagehand for AI-powered actions
+            observe_stream = client.sessions.observe(
+                session.id,
+                instruction="find the link to view comments for the top post",
+                stream_response=True,
+                x_stream_response="true",
+            )
+            for _ in observe_stream:
+                pass
+
+            act_stream = client.sessions.act(
+                session.id,
+                input="Click the comments link for the top post",
+                stream_response=True,
+                x_stream_response="true",
+            )
+            for _ in act_stream:
+                pass
+
+            # Use Playwright for precise control
+            page.screenshot(path="screenshot.png")
+            title = page.title()
+            print(f"Page title: {title}")
+
+        client.sessions.end(session.id)
+```
+
+## Local Browser Integration
+
+You can also run a local Playwright browser and connect it to Stagehand. This is useful for development and debugging:
+
+```python
+import os
+import socket
+import json
+import time
+from urllib.request import urlopen
+from playwright.sync_api import sync_playwright
+from stagehand import Stagehand
+
+def pick_free_port():
+    """Find an available port for the CDP server."""
+    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock:
+        sock.bind(("127.0.0.1", 0))
+        return int(sock.getsockname()[1])
+
+def resolve_cdp_ws_url(port: int) -> str:
+    """Wait for the CDP server to start and get the WebSocket URL."""
+    url = f"http://127.0.0.1:{port}/json/version"
+    for _ in range(40):
+        try:
+            with urlopen(url, timeout=1) as response:
+                payload = json.loads(response.read().decode("utf-8"))
+            ws_url = payload.get("webSocketDebuggerUrl")
+            if ws_url:
+                return str(ws_url)
+        except Exception:
+            pass
+        time.sleep(0.1)
+    raise RuntimeError(f"Unable to resolve CDP WebSocket URL from {url}")
+
+def main():
+    with Stagehand(
+        server="local",
+        browserbase_api_key=os.environ.get("BROWSERBASE_API_KEY"),
+        browserbase_project_id=os.environ.get("BROWSERBASE_PROJECT_ID"),
+        model_api_key=os.environ.get("MODEL_API_KEY"),
+        local_openai_api_key=os.environ.get("MODEL_API_KEY"),
+        local_ready_timeout_s=30.0,
+    ) as client:
+        with sync_playwright() as p:
+            # Launch local browser with CDP enabled
+            port = pick_free_port()
+            browser = p.chromium.launch(
+                headless=True,
+                args=[f"--remote-debugging-port={port}"],
+            )
+            cdp_url = resolve_cdp_ws_url(port)
+
+            context = browser.new_context()
+            page = context.new_page()
+            page.goto("about:blank", wait_until="domcontentloaded")
+
+            # Start Stagehand session with local browser
+            session = client.sessions.start(
+                model_name="anthropic/claude-sonnet-4-6",
+                browser={
+                    "type": "local",
+                    "launchOptions": {"cdpUrl": cdp_url},
+                },
+                verbose=2,
+            )
+
+            try:
+                page.goto("https://example.com", wait_until="domcontentloaded")
+
+                # Use Stagehand with the Playwright page
+                observe_stream = session.observe(
+                    instruction="Find the most relevant click target on this page",
+                    page=page,
+                    stream_response=True,
+                    x_stream_response="true",
+                )
+                for _ in observe_stream:
+                    pass
+
+            finally:
+                browser.close()
+                session.end()
+```
+
+## Passing Playwright Page to Stagehand
+
+When you pass a Playwright `page` object to Stagehand methods, it automatically detects the correct frame ID:
+
+```python
+from playwright.sync_api import sync_playwright
+
+with sync_playwright() as p:
+    browser = p.chromium.connect_over_cdp(cdp_url)
+    context = browser.contexts[0]
+    page = context.pages[0]
+
+    # Pass the page object to Stagehand methods
+    observe_stream = session.observe(
+        instruction="find the search box",
+        page=page,  # Auto-detects frame_id
+        stream_response=True,
+        x_stream_response="true",
+    )
+
+    act_stream = session.act(
+        input="type 'hello world' into the search box",
+        page=page,
+        stream_response=True,
+        x_stream_response="true",
+    )
+
+    extract_stream = session.extract(
+        instruction="extract the page title and heading",
+        schema={
+            "type": "object",
+            "properties": {
+                "title": {"type": "string"},
+                "h1": {"type": "string"},
+            },
+        },
+        page=page,
+        stream_response=True,
+        x_stream_response="true",
+    )
+```
+
+## Complete Workflow Example
+
+Here's a complete example showing all Stagehand operations with Playwright integration:
+
+```python
+def print_stream_events(stream, label: str):
+    """Helper to process streaming events."""
+    result_payload = None
+    for event in stream:
+        if event.type == "log":
+            print(f"[{label}][log] {event.data.message}")
+            continue
+
+        status = event.data.status
+        print(f"[{label}][system] status={status}")
+        if status == "finished":
+            result_payload = event.data.result
+        elif status == "error":
+            error_message = event.data.error or "unknown error"
+            raise RuntimeError(f"{label} stream reported error: {error_message}")
+
+    return result_payload
+
+with Stagehand(...) as client:
+    session = client.sessions.start(
+        model_name="anthropic/claude-sonnet-4-6",
+        browser={"type": "browserbase"},
+        verbose=2,
+    )
+
+    cdp_url = session.data.cdp_url
+
+    with sync_playwright() as p:
+        browser = p.chromium.connect_over_cdp(cdp_url)
+        context = browser.contexts[0] if browser.contexts else browser.new_context()
+        page = context.pages[0] if context.pages else context.new_page()
+
+        page.goto("https://example.com", wait_until="domcontentloaded")
+
+        # 1. Observe: Find elements
+        observe_stream = session.observe(
+            instruction="Find the most relevant click target on this page",
+            page=page,
+            stream_response=True,
+            x_stream_response="true",
+        )
+        actions = print_stream_events(observe_stream, "observe") or []
+
+        if actions:
+            # 2. Act: Perform action
+            act_stream = session.act(
+                input=actions[0],
+                page=page,
+                stream_response=True,
+                x_stream_response="true",
+            )
+            print_stream_events(act_stream, "act")
+
+        # 3. Extract: Get structured data
+        extract_stream = session.extract(
+            instruction="Extract the page title and the primary heading (h1) text",
+            schema={
+                "type": "object",
+                "properties": {
+                    "title": {"type": "string"},
+                    "h1": {"type": "string"},
+                },
+                "required": ["title", "h1"],
+            },
+            page=page,
+            stream_response=True,
+            x_stream_response="true",
+        )
+        extracted = print_stream_events(extract_stream, "extract")
+        print(f"Extracted data: {extracted}")
+
+        # 4. Execute: Run autonomous agent
+        execute_stream = session.execute(
+            agent_config={"model": "anthropic/claude-opus-4-6"},
+            execute_options={
+                "instruction": "Open the 'Learn more' link and summarize the page",
+                "max_steps": 5,
+            },
+            page=page,
+            stream_response=True,
+            x_stream_response="true",
+        )
+        execute_result = print_stream_events(execute_stream, "execute")
+        print(f"Agent result: {execute_result}")
+
+        # Use Playwright for additional control
+        page.screenshot(path="final_state.png")
+
+        browser.close()
+    
+    session.end()
+```
+
+## Benefits of Integration
+
+<CardGroup cols={2}>
+  <div className="p-6 rounded-xl bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700">
+    <h3 className="text-lg font-semibold mb-2">AI-Powered Actions</h3>
+    <p className="text-slate-600 dark:text-slate-400">
+      Use Stagehand for natural language automation on dynamic or unfamiliar pages
+    </p>
+  </div>
+  
+  <div className="p-6 rounded-xl bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700">
+    <h3 className="text-lg font-semibold mb-2">Precise Control</h3>
+    <p className="text-slate-600 dark:text-slate-400">
+      Use Playwright for direct DOM access, screenshots, network interception, and more
+    </p>
+  </div>
+  
+  <div className="p-6 rounded-xl bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700">
+    <h3 className="text-lg font-semibold mb-2">Unified Session</h3>
+    <p className="text-slate-600 dark:text-slate-400">
+      Both tools control the same browser instance - no coordination needed
+    </p>
+  </div>
+  
+  <div className="p-6 rounded-xl bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700">
+    <h3 className="text-lg font-semibold mb-2">Debugging</h3>
+    <p className="text-slate-600 dark:text-slate-400">
+      Use Playwright's debugging tools while leveraging Stagehand's AI capabilities
+    </p>
+  </div>
+</CardGroup>
+
+## Best Practices
+
+<Tip>
+**Use the right tool for the job**: Use Stagehand for dynamic interactions and element finding. Use Playwright for precise control, screenshots, and debugging.
+</Tip>
+
+<Warning>
+**Close browsers properly**: Always close the Playwright browser with `browser.close()` and end the Stagehand session with `session.end()` to prevent resource leaks.
+</Warning>
+
+<Note>
+**Frame detection**: When you pass a Playwright `page` to Stagehand methods, it automatically detects the correct `frame_id`, making multi-frame workflows seamless.
+</Note>
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Basic Automation" icon="bolt" href="/examples/basic-automation">
+    Learn basic Stagehand automation patterns
+  </Card>
+  <Card title="Data Extraction" icon="database" href="/examples/data-extraction">
+    Extract structured data with schemas
+  </Card>
+  <Card title="Playwright Docs" icon="book" href="https://playwright.dev/python/">
+    Official Playwright Python documentation
+  </Card>
+  <Card title="API Reference" icon="code" href="/api/sessions/start">
+    Complete session API documentation
+  </Card>
+</CardGroup>

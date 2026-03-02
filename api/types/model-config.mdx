@@ -1,0 +1,121 @@
+---
+title: "Model Config"
+description: "Configuration parameters for AI model settings"
+---
+
+## ModelConfigParam
+
+Configuration object for specifying which AI model to use and how to connect to it.
+
+<ResponseField name="model_name" type="str" required>
+  Model name string with provider prefix (e.g., 'openai/gpt-5-nano', 'anthropic/claude-sonnet-4-6')
+  
+  Format: `provider/model-name`
+  
+  Common examples:
+  - `anthropic/claude-sonnet-4-6`
+  - `anthropic/claude-opus-4-6`
+  - `openai/gpt-4o`
+  - `openai/gpt-5-nano`
+</ResponseField>
+
+<ResponseField name="api_key" type="str">
+  API key for the model provider
+  
+  If not specified, the SDK will use the `MODEL_API_KEY` environment variable.
+</ResponseField>
+
+<ResponseField name="base_url" type="str">
+  Base URL for the model provider
+  
+  Use this to specify a custom endpoint for the model provider, such as:
+  - A proxy server
+  - A local model server
+  - An alternative API endpoint
+  
+  If not specified, the default endpoint for the provider will be used.
+</ResponseField>
+
+<ResponseField name="provider" type="Literal['openai', 'anthropic', 'google', 'microsoft']">
+  AI provider for the model
+  
+  Supported providers:
+  - `openai`: OpenAI models (GPT-4, GPT-5, etc.)
+  - `anthropic`: Anthropic models (Claude)
+  - `google`: Google models (Gemini)
+  - `microsoft`: Microsoft models
+  
+  If you provide a `base_url`, the provider will be inferred from the model name prefix.
+</ResponseField>
+
+## Usage Examples
+
+### Basic usage with model name
+
+```python
+from stagehand import AsyncStagehand
+
+async with AsyncStagehand() as client:
+    session = await client.sessions.start(
+        model_name="anthropic/claude-sonnet-4-6"
+    )
+```
+
+### Custom model configuration
+
+```python
+from stagehand import AsyncStagehand
+
+async with AsyncStagehand() as client:
+    session = await client.sessions.start(
+        model_name="anthropic/claude-opus-4-6",
+        model={
+            "model_name": "anthropic/claude-opus-4-6",
+            "api_key": "your-api-key",
+        }
+    )
+```
+
+### Using a custom endpoint
+
+```python
+from stagehand import AsyncStagehand
+
+async with AsyncStagehand() as client:
+    session = await client.sessions.start(
+        model_name="openai/gpt-4o",
+        model={
+            "model_name": "openai/gpt-4o",
+            "base_url": "https://your-proxy.example.com",
+            "api_key": "your-api-key",
+        }
+    )
+```
+
+### Agent configuration with custom model
+
+```python
+from stagehand import AsyncStagehand
+
+async with AsyncStagehand() as client:
+    session = await client.sessions.start(
+        model_name="anthropic/claude-sonnet-4-6"
+    )
+    
+    # Use a different model for agent execution
+    execute_stream = await client.sessions.execute(
+        session.id,
+        execute_options={
+            "instruction": "Click the 'Learn more' link if available",
+            "max_steps": 3,
+        },
+        agent_config={
+            "model": {
+                "model_name": "anthropic/claude-opus-4-6",
+            },
+            "cua": False,
+        },
+        stream_response=True,
+        x_stream_response="true",
+    )
+```

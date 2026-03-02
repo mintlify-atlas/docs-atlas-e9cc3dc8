@@ -1,0 +1,268 @@
+---
+title: "Stagehand"
+description: "Synchronous client for Stagehand browser automation"
+---
+
+The `Stagehand` class is the main synchronous client for interacting with the Stagehand API. It provides access to browser automation features with AI-powered capabilities.
+
+## Constructor
+
+```python
+from stagehand import Stagehand
+
+client = Stagehand(
+    browserbase_api_key="your-api-key",
+    browserbase_project_id="your-project-id",
+    model_api_key="your-model-api-key",
+    server="remote"
+)
+```
+
+## Parameters
+
+<ParamField path="browserbase_api_key" type="str | None" default="None">
+  Browserbase API key for authentication. If not provided, reads from `BROWSERBASE_API_KEY` environment variable.
+</ParamField>
+
+<ParamField path="browserbase_project_id" type="str | None" default="None">
+  Browserbase project ID. If not provided, reads from `BROWSERBASE_PROJECT_ID` environment variable.
+</ParamField>
+
+<ParamField path="model_api_key" type="str | None" required>
+  API key for the AI model provider. If not provided, reads from `MODEL_API_KEY` environment variable. This parameter is required.
+</ParamField>
+
+<ParamField path="server" type="Literal['remote', 'local']" default="remote">
+  Server mode to use. Options:
+  - `"remote"`: Connect to remote Stagehand API (default)
+  - `"local"`: Run local Stagehand server
+</ParamField>
+
+### Local Server Parameters
+
+<ParamField path="_local_stagehand_binary_path" type="str | os.PathLike[str] | None" default="None">
+  Path to local Stagehand binary. Only used when `server="local"`.
+</ParamField>
+
+<ParamField path="local_host" type="str" default="127.0.0.1">
+  Host address for local server. Only used when `server="local"`.
+</ParamField>
+
+<ParamField path="local_port" type="int" default="0">
+  Port for local server. Set to `0` for automatic port assignment. Only used when `server="local"`.
+</ParamField>
+
+<ParamField path="local_headless" type="bool" default="True">
+  Whether to run Chrome in headless mode. Only used when `server="local"`.
+</ParamField>
+
+<ParamField path="local_chrome_path" type="str | None" default="None">
+  Custom Chrome executable path. Only used when `server="local"`.
+</ParamField>
+
+<ParamField path="local_ready_timeout_s" type="float" default="10.0">
+  Timeout in seconds for local server to become ready. Only used when `server="local"`.
+</ParamField>
+
+<ParamField path="local_openai_api_key" type="str | None" default="None">
+  OpenAI API key for local server. Falls back to `OPENAI_API_KEY` environment variable or `model_api_key`. Only used when `server="local"`.
+</ParamField>
+
+<ParamField path="local_shutdown_on_close" type="bool" default="True">
+  Whether to shutdown local server when client closes. Only used when `server="local"`.
+</ParamField>
+
+### HTTP Client Parameters
+
+<ParamField path="base_url" type="str | httpx.URL | None" default="None">
+  Base URL for API requests. Defaults to `https://api.stagehand.browserbase.com` for remote mode or reads from `STAGEHAND_BASE_URL` environment variable.
+</ParamField>
+
+<ParamField path="timeout" type="float | Timeout | None" default="60 seconds">
+  Request timeout in seconds or httpx Timeout object.
+</ParamField>
+
+<ParamField path="max_retries" type="int" default="2">
+  Maximum number of retry attempts for failed requests.
+</ParamField>
+
+<ParamField path="default_headers" type="Mapping[str, str] | None" default="None">
+  Additional headers to include in all requests.
+</ParamField>
+
+<ParamField path="default_query" type="Mapping[str, object] | None" default="None">
+  Additional query parameters to include in all requests.
+</ParamField>
+
+<ParamField path="http_client" type="httpx.Client | None" default="None">
+  Custom httpx client instance. See [httpx documentation](https://www.python-httpx.org/api/#client) for configuration options.
+</ParamField>
+
+<ParamField path="_strict_response_validation" type="bool" default="False">
+  Enable strict schema validation for API responses. Raises `APIResponseValidationError` on validation failures.
+</ParamField>
+
+## Properties
+
+### sessions
+
+Access session operations for creating and managing browser sessions.
+
+```python
+client.sessions.start(model_name="anthropic/claude-sonnet-4-6")
+client.sessions.navigate(session_id, url="https://example.com")
+client.sessions.act(session_id, input="click the login button")
+client.sessions.observe(session_id, instruction="find all product links")
+client.sessions.extract(session_id, instruction="get page title", schema={...})
+client.sessions.execute(session_id, execute_options={...})
+client.sessions.end(session_id)
+```
+
+### with_raw_response
+
+Access raw HTTP responses with headers and status codes.
+
+```python
+response = client.with_raw_response.sessions.start(
+    model_name="anthropic/claude-sonnet-4-6"
+)
+print(response.headers.get("X-Request-ID"))
+session = response.parse()
+```
+
+### with_streaming_response
+
+Stream response bodies for efficient data transfer.
+
+```python
+with client.with_streaming_response.sessions.start(
+    model_name="anthropic/claude-sonnet-4-6"
+) as response:
+    for line in response.iter_lines():
+        print(line)
+```
+
+## Methods
+
+### close()
+
+Close the HTTP client and cleanup resources. If using local server mode, also shuts down the local server.
+
+```python
+client.close()
+```
+
+<Note>
+Prefer using the client as a context manager to ensure proper cleanup:
+
+```python
+with Stagehand(...) as client:
+    # your code here
+    pass
+# client is automatically closed
+```
+</Note>
+
+### copy()
+
+Create a new client instance with modified options while reusing the same connection pool.
+
+```python
+modified_client = client.copy(
+    timeout=120.0,
+    max_retries=5
+)
+```
+
+Alias: `with_options()`
+
+```python
+modified_client = client.with_options(
+    timeout=120.0,
+    max_retries=5
+)
+```
+
+## Usage Examples
+
+### Basic Usage
+
+```python
+from stagehand import Stagehand
+
+with Stagehand(
+    browserbase_api_key="bb_api_key",
+    browserbase_project_id="bb_project_id",
+    model_api_key="llm_api_key"
+) as client:
+    session = client.sessions.start(
+        model_name="anthropic/claude-sonnet-4-6"
+    )
+    
+    client.sessions.navigate(session.id, url="https://example.com")
+    
+    result = client.sessions.act(
+        session.id,
+        input="click the search button"
+    )
+    
+    client.sessions.end(session.id)
+```
+
+### Local Server Mode
+
+```python
+from stagehand import Stagehand
+
+client = Stagehand(
+    server="local",
+    model_api_key="llm_api_key",
+    local_headless=False,  # run Chrome with UI
+    local_port=8080
+)
+
+session = client.sessions.start(
+    model_name="anthropic/claude-sonnet-4-6"
+)
+
+client.close()
+```
+
+### With Custom HTTP Client
+
+```python
+import httpx
+from stagehand import Stagehand, DefaultHttpxClient
+
+client = Stagehand(
+    model_api_key="llm_api_key",
+    http_client=DefaultHttpxClient(
+        proxy="http://proxy.example.com:8080",
+        timeout=httpx.Timeout(120.0)
+    )
+)
+```
+
+### Error Handling
+
+```python
+import stagehand
+from stagehand import Stagehand
+
+try:
+    with Stagehand(model_api_key="llm_api_key") as client:
+        session = client.sessions.start(
+            model_name="anthropic/claude-sonnet-4-6"
+        )
+except stagehand.AuthenticationError:
+    print("Invalid API key")
+except stagehand.RateLimitError:
+    print("Rate limit exceeded")
+except stagehand.APIConnectionError as e:
+    print(f"Connection failed: {e}")
+```
+
+## See Also
+
+- [AsyncStagehand](/api/client/async-stagehand) - Async version of this client
+- [Sessions API](/api/sessions/start) - Session management operations

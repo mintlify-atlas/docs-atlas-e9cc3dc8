@@ -1,0 +1,235 @@
+---
+title: "Replay"
+description: "Retrieve replay metrics and session history"
+---
+
+## Method Signature
+
+```python
+client.sessions.replay(
+    id: str,
+) -> SessionReplayResponse
+```
+
+## Parameters
+
+<ParamField path="id" type="string" required>
+Unique session identifier returned from `sessions.start()`
+</ParamField>
+
+## Response
+
+<ResponseField name="success" type="boolean" required>
+Indicates whether the request was successful
+</ResponseField>
+
+<ResponseField name="data" type="object" required>
+<Expandable title="Data properties">
+  <ResponseField name="pages" type="array" required>
+  List of pages visited during the session
+  
+  <Expandable title="Page properties">
+    <ResponseField name="url" type="string" required>
+    URL of the page
+    </ResponseField>
+
+    <ResponseField name="timestamp" type="number" required>
+    Timestamp when the page was loaded
+    </ResponseField>
+
+    <ResponseField name="duration" type="number" required>
+    Time spent on the page in milliseconds
+    </ResponseField>
+
+    <ResponseField name="actions" type="array" required>
+    List of actions performed on this page
+    
+    <Expandable title="Action properties">
+      <ResponseField name="method" type="string" required>
+      Method name (act, observe, extract, etc.)
+      </ResponseField>
+
+      <ResponseField name="parameters" type="object" required>
+      Parameters passed to the method
+      </ResponseField>
+
+      <ResponseField name="result" type="object" required>
+      Result returned from the method
+      </ResponseField>
+
+      <ResponseField name="timestamp" type="number" required>
+      Timestamp when the action was executed
+      </ResponseField>
+
+      <ResponseField name="end_time" type="number">
+      Timestamp when the action completed
+      </ResponseField>
+
+      <ResponseField name="token_usage" type="object">
+      Token usage for this action
+      
+      <Expandable title="Token usage properties">
+        <ResponseField name="input_tokens" type="number">
+        Number of input tokens
+        </ResponseField>
+
+        <ResponseField name="output_tokens" type="number">
+        Number of output tokens
+        </ResponseField>
+
+        <ResponseField name="cost" type="number">
+        Estimated cost for this action
+        </ResponseField>
+
+        <ResponseField name="time_ms" type="number">
+        Inference time in milliseconds
+        </ResponseField>
+      </Expandable>
+      </ResponseField>
+    </Expandable>
+    </ResponseField>
+  </Expandable>
+  </ResponseField>
+
+  <ResponseField name="client_language" type="string">
+  Client SDK language (e.g., "python")
+  </ResponseField>
+</Expandable>
+</ResponseField>
+
+## Examples
+
+### Basic replay retrieval
+
+```python
+from stagehand import Stagehand
+
+client = Stagehand()
+session = client.sessions.start(model_name="anthropic/claude-sonnet-4-6")
+
+# Perform some actions
+client.sessions.navigate(session.data.session_id, url="https://example.com")
+client.sessions.act(session.data.session_id, input="Click the search button")
+client.sessions.extract(
+    session.data.session_id,
+    instruction="Extract the page title",
+    schema={"type": "object", "properties": {"title": {"type": "string"}}},
+)
+
+# Get replay data
+replay = client.sessions.replay(session.data.session_id)
+
+print(f"Pages visited: {len(replay.data.pages)}")
+for page in replay.data.pages:
+    print(f"\nURL: {page.url}")
+    print(f"Duration: {page.duration}ms")
+    print(f"Actions: {len(page.actions)}")
+```
+
+### Analyzing action history
+
+```python
+replay = client.sessions.replay(session.data.session_id)
+
+for page in replay.data.pages:
+    print(f"\nPage: {page.url}")
+    for action in page.actions:
+        print(f"  Method: {action.method}")
+        print(f"  Timestamp: {action.timestamp}")
+        
+        if action.token_usage:
+            print(f"  Tokens: {action.token_usage.input_tokens} in, {action.token_usage.output_tokens} out")
+            if action.token_usage.cost:
+                print(f"  Cost: ${action.token_usage.cost:.4f}")
+```
+
+### Calculating total costs
+
+```python
+replay = client.sessions.replay(session.data.session_id)
+
+total_cost = 0
+total_input_tokens = 0
+total_output_tokens = 0
+
+for page in replay.data.pages:
+    for action in page.actions:
+        if action.token_usage:
+            if action.token_usage.cost:
+                total_cost += action.token_usage.cost
+            if action.token_usage.input_tokens:
+                total_input_tokens += action.token_usage.input_tokens
+            if action.token_usage.output_tokens:
+                total_output_tokens += action.token_usage.output_tokens
+
+print(f"Total cost: ${total_cost:.4f}")
+print(f"Total input tokens: {total_input_tokens}")
+print(f"Total output tokens: {total_output_tokens}")
+```
+
+### Measuring performance
+
+```python
+replay = client.sessions.replay(session.data.session_id)
+
+for page in replay.data.pages:
+    print(f"\nPage: {page.url}")
+    print(f"Page duration: {page.duration}ms")
+    
+    for action in page.actions:
+        if action.end_time and action.timestamp:
+            duration = action.end_time - action.timestamp
+            print(f"  {action.method}: {duration}ms")
+```
+
+### Debugging failed actions
+
+```python
+replay = client.sessions.replay(session.data.session_id)
+
+for page in replay.data.pages:
+    for action in page.actions:
+        result = action.result
+        
+        # Check if the action was successful
+        if isinstance(result, dict) and not result.get('success', True):
+            print(f"Failed action on {page.url}:")
+            print(f"  Method: {action.method}")
+            print(f"  Parameters: {action.parameters}")
+            print(f"  Result: {result}")
+```
+
+### Async replay retrieval
+
+```python
+import asyncio
+from stagehand import AsyncStagehand
+
+async def main():
+    async with AsyncStagehand() as client:
+        session = await client.sessions.start(model_name="anthropic/claude-sonnet-4-6")
+        await client.sessions.navigate(session.data.session_id, url="https://example.com")
+        
+        replay = await client.sessions.replay(session.data.session_id)
+        
+        print(f"Client language: {replay.data.client_language}")
+        print(f"Pages: {len(replay.data.pages)}")
+
+asyncio.run(main())
+```
+
+### Export replay data
+
+```python
+import json
+
+replay = client.sessions.replay(session.data.session_id)
+
+# Convert to JSON for storage or analysis
+replay_data = replay.model_dump()
+
+with open('session_replay.json', 'w') as f:
+    json.dump(replay_data, f, indent=2)
+
+print("Replay data exported to session_replay.json")
+```

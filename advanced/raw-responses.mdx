@@ -1,0 +1,161 @@
+---
+title: "Raw Responses"
+description: "Access HTTP response headers, status codes, and raw response bodies"
+---
+
+The SDK methods deserialize API responses into typed Pydantic models by default. However, you may need access to the underlying HTTP response data such as headers, status codes, or the raw response body.
+
+## Using `with_raw_response`
+
+Prefix any HTTP method call on a client or resource with `with_raw_response` to get the raw response:
+
+```python
+import asyncio
+from stagehand import AsyncStagehand
+
+
+async def main() -> None:
+    async with AsyncStagehand() as client:
+        response = await client.sessions.with_raw_response.start(
+            model_name="anthropic/claude-sonnet-4-6"
+        )
+        
+        # Access response headers
+        print(response.headers.get("X-My-Header"))
+        print(response.status_code)
+        
+        # Parse the object that `sessions.start()` would have returned
+        session = response.parse()
+        print(session.data)
+
+
+asyncio.run(main())
+```
+
+### Synchronous Usage
+
+The same pattern works with the synchronous client:
+
+```python
+from stagehand import Stagehand
+
+client = Stagehand()
+response = client.sessions.with_raw_response.start(
+    model_name="anthropic/claude-sonnet-4-6",
+)
+print(response.headers.get("X-My-Header"))
+
+session = response.parse()  # get the typed object
+print(session.data)
+```
+
+## Using `with_streaming_response`
+
+The `with_raw_response` interface eagerly reads the full response body when you make the request. If you want to stream the response body (not SSE events), use `with_streaming_response` instead.
+
+<Warning>
+`with_streaming_response` requires a context manager and only reads the response body when you explicitly call `.read()`, `.text()`, `.json()`, `.iter_bytes()`, `.iter_text()`, `.iter_lines()` or `.parse()`.
+</Warning>
+
+```python
+import asyncio
+from stagehand import AsyncStagehand
+
+
+async def main() -> None:
+    async with AsyncStagehand() as client:
+        async with client.sessions.with_streaming_response.start(
+            model_name="anthropic/claude-sonnet-4-6"
+        ) as response:
+            print(response.headers.get("X-My-Header"))
+            
+            # Stream the response body line by line
+            async for line in response.iter_lines():
+                print(line)
+
+
+asyncio.run(main())
+```
+
+### Synchronous Streaming
+
+```python
+from stagehand import Stagehand
+
+with Stagehand() as client:
+    with client.sessions.with_streaming_response.start(
+        model_name="anthropic/claude-sonnet-4-6",
+    ) as response:
+        print(response.headers.get("X-My-Header"))
+        
+        for line in response.iter_lines():
+            print(line)
+```
+
+## Available Methods
+
+Both `APIResponse` (sync) and `AsyncAPIResponse` (async) provide these methods:
+
+- `.headers` - Access HTTP response headers
+- `.status_code` - Get the HTTP status code
+- `.parse()` - Parse the response into the expected Pydantic model
+- `.read()` - Read the full response body as bytes
+- `.text()` - Read the response body as text
+- `.json()` - Parse the response body as JSON
+- `.iter_bytes()` - Iterate over response body bytes
+- `.iter_text()` - Iterate over response body text
+- `.iter_lines()` - Iterate over response body lines
+
+## Use Cases
+
+### Debugging API Responses
+
+```python
+async with AsyncStagehand() as client:
+    response = await client.sessions.with_raw_response.start(
+        model_name="anthropic/claude-sonnet-4-6"
+    )
+    
+    # Log debug information
+    print(f"Status: {response.status_code}")
+    print(f"Headers: {dict(response.headers)}")
+    print(f"Request ID: {response.headers.get('x-request-id')}")
+```
+
+### Custom Response Processing
+
+```python
+async with AsyncStagehand() as client:
+    async with client.sessions.with_streaming_response.navigate(
+        id=session_id,
+        url="https://example.com"
+    ) as response:
+        # Process response in chunks
+        async for chunk in response.iter_bytes(chunk_size=1024):
+            process_chunk(chunk)
+```
+
+### Handling Special Headers
+
+```python
+response = await client.sessions.with_raw_response.act(
+    id=session_id,
+    input="click the first link"
+)
+
+# Check rate limit headers
+remaining = response.headers.get("x-ratelimit-remaining")
+if remaining and int(remaining) < 10:
+    print("Warning: approaching rate limit")
+
+session = response.parse()
+```
+
+## Difference from SSE Streaming
+
+Note that `with_streaming_response` is different from SSE (Server-Sent Events) streaming:
+
+- **SSE Streaming** (`stream_response=True`, `x_stream_response="true"`): Receives real-time events during action execution
+- **Response Body Streaming** (`with_streaming_response`): Streams the HTTP response body itself
+
+For SSE streaming, see the [Streaming guide](/guides/streaming-responses).

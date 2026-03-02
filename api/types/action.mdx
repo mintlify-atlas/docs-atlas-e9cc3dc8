@@ -1,0 +1,163 @@
+---
+title: "Action"
+description: "Action object returned by observe and used by act"
+---
+
+## ActionParam
+
+Action object that describes a browser interaction. This type is returned by the `observe()` method and can be passed to the `act()` method to perform the action.
+
+<ResponseField name="description" type="str" required>
+  Human-readable description of the action
+  
+  Example: "Click the login button" or "Fill in the email field"
+</ResponseField>
+
+<ResponseField name="selector" type="str" required>
+  CSS selector or XPath for the element
+  
+  Examples:
+  - CSS: `#login-button`, `.submit-btn`, `button[type="submit"]`
+  - XPath: `//*[@id="login-button"]`, `//button[contains(text(), "Login")]`
+</ResponseField>
+
+<ResponseField name="arguments" type="List[str]">
+  Arguments to pass to the method
+  
+  For example, when filling a text field, this would contain the text to enter:
+  ```python
+  arguments=["user@example.com"]
+  ```
+</ResponseField>
+
+<ResponseField name="backend_node_id" type="float">
+  Backend node ID for the element
+  
+  This is an internal Chrome DevTools Protocol (CDP) identifier for the DOM node.
+</ResponseField>
+
+<ResponseField name="method" type="str">
+  The method to execute on the element
+  
+  Common methods:
+  - `click`: Click the element
+  - `fill`: Fill a text input
+  - `select`: Select an option from a dropdown
+  - `hover`: Hover over the element
+  - `type`: Type text into an element
+</ResponseField>
+
+## Usage Examples
+
+### Observe and act pattern
+
+```python
+import asyncio
+from stagehand import AsyncStagehand
+
+async def main() -> None:
+    async with AsyncStagehand() as client:
+        session = await client.sessions.start(
+            model_name="anthropic/claude-sonnet-4-6"
+        )
+        
+        # Navigate to a page
+        await client.sessions.navigate(
+            session.id,
+            url="https://example.com"
+        )
+        
+        # Observe available actions
+        observe_response = await client.sessions.observe(
+            session.id,
+            instruction="find the login button"
+        )
+        
+        # The response contains Action objects
+        actions = observe_response.data.result
+        if actions:
+            action = actions[0]
+            print(f"Found action: {action.description}")
+            print(f"Selector: {action.selector}")
+            print(f"Method: {action.method}")
+
+asyncio.run(main())
+```
+
+### Using actions with act()
+
+```python
+import asyncio
+from stagehand import AsyncStagehand
+
+async def main() -> None:
+    async with AsyncStagehand() as client:
+        session = await client.sessions.start(
+            model_name="anthropic/claude-sonnet-4-6"
+        )
+        
+        await client.sessions.navigate(
+            session.id,
+            url="https://example.com"
+        )
+        
+        # Observe returns Action objects
+        observe_response = await client.sessions.observe(
+            session.id,
+            instruction="find the search input field"
+        )
+        
+        # Act on the observed action
+        act_response = await client.sessions.act(
+            session.id,
+            input="Type 'hello world' into the search field"
+        )
+        
+        # The act response contains information about executed actions
+        for action in act_response.data.result.actions:
+            print(f"Executed: {action.description}")
+            print(f"Using selector: {action.selector}")
+            if action.method:
+                print(f"Method: {action.method}")
+            if action.arguments:
+                print(f"Arguments: {action.arguments}")
+
+asyncio.run(main())
+```
+
+### Streaming example
+
+```python
+import asyncio
+from stagehand import AsyncStagehand
+
+async def main() -> None:
+    async with AsyncStagehand() as client:
+        session = await client.sessions.start(
+            model_name="anthropic/claude-sonnet-4-6"
+        )
+        
+        await client.sessions.navigate(
+            session.id,
+            url="https://news.ycombinator.com"
+        )
+        
+        # Stream observe events
+        observe_stream = await client.sessions.observe(
+            session.id,
+            instruction="find the link to view comments for the top post",
+            stream_response=True,
+            x_stream_response="true",
+        )
+        
+        async for event in observe_stream:
+            if event.type == "system" and event.data.status == "finished":
+                # Access the actions from the result
+                result = event.data.result
+                if result and "data" in result:
+                    actions = result["data"].get("result", [])
+                    for action in actions:
+                        print(f"Found action: {action}")
+
+asyncio.run(main())
+```

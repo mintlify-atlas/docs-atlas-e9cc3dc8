@@ -1,0 +1,407 @@
+---
+title: Actions
+description: Core browser automation operations - observe, act, extract, and execute
+---
+
+Stagehand provides four primary action methods for browser automation. Each method is designed for specific use cases, from simple interactions to complex multi-step workflows.
+
+## Overview
+
+The four core action methods are:
+
+- **observe**: Identify available actions on a page
+- **act**: Perform a browser action using natural language
+- **extract**: Extract structured data from the page
+- **execute**: Run an autonomous AI agent for complex tasks
+
+## Observe
+
+The `observe()` method identifies available actions on the current page that match your instruction. It returns a list of Action objects that can be used with `act()`.
+
+### Basic Usage
+
+```python
+actions = await session.observe(
+    instruction="find the login button"
+)
+
+if actions:
+    print(f"Found {len(actions)} actions")
+    for action in actions:
+        print(f"- {action.description}")
+```
+
+### With Streaming
+
+```python
+observe_stream = await session.observe(
+    instruction="find all product cards on the page",
+    stream_response=True,
+    x_stream_response="true"
+)
+
+async for event in observe_stream:
+    if event.type == "log":
+        print(f"Log: {event.data.message}")
+    elif event.type == "system" and event.data.status == "finished":
+        actions = event.data.result
+        print(f"Found {len(actions)} actions")
+```
+
+### Action Objects
+
+Each Action object contains:
+
+<ParamField path="description" type="string" required>
+  Human-readable description of what the action does
+</ParamField>
+
+<ParamField path="selector" type="string" required>
+  CSS selector or XPath for the target element
+</ParamField>
+
+<ParamField path="method" type="string">
+  The method to execute (e.g., "click", "fill", "select")
+</ParamField>
+
+<ParamField path="backend_node_id" type="number">
+  Backend node ID for precise element targeting
+</ParamField>
+
+<ParamField path="arguments" type="array">
+  Arguments to pass to the method (e.g., text to fill)
+</ParamField>
+
+## Act
+
+The `act()` method performs browser actions using either natural language instructions or Action objects from `observe()`.
+
+### With Natural Language
+
+The simplest approach is using a natural language instruction:
+
+```python
+# Direct string instruction
+result = await session.act(
+    input="click the login button"
+)
+
+print(f"Action completed: {result.data.message}")
+```
+
+<CodeGroup>
+```python Click Example
+await session.act(input="click the 'Sign In' button")
+```
+
+```python Fill Example  
+await session.act(
+    input="fill the email field with 'user@example.com'"
+)
+```
+
+```python Complex Example
+await session.act(
+    input="scroll down to the footer and click the 'Privacy Policy' link"
+)
+```
+</CodeGroup>
+
+### With Action Objects
+
+For more precise control, use Action objects from `observe()`:
+
+```python
+# First, observe to find available actions
+actions = await session.observe(
+    instruction="find the search button"
+)
+
+if actions:
+    # Use the first action
+    result = await session.act(input=actions[0])
+    print(f"Executed: {actions[0].description}")
+```
+
+### Streaming Responses
+
+```python
+act_stream = await session.act(
+    input="click the 'Submit' button",
+    stream_response=True,
+    x_stream_response="true"
+)
+
+async for event in act_stream:
+    if event.type == "log":
+        print(f"[log] {event.data.message}")
+    elif event.type == "system":
+        print(f"[system] status={event.data.status}")
+        if event.data.status == "finished":
+            print(f"Result: {event.data.result}")
+```
+
+### Options
+
+<ParamField path="input" type="string | Action" required>
+  Natural language instruction or Action object from observe()
+</ParamField>
+
+<ParamField path="frame_id" type="string">
+  Target frame ID for the action (useful for iframes)
+</ParamField>
+
+<ParamField path="options" type="object">
+  Additional options for fine-tuning the action behavior
+</ParamField>
+
+## Extract
+
+The `extract()` method extracts structured data from the current page using AI-powered analysis and a JSON schema.
+
+### Basic Usage
+
+```python
+data = await session.extract(
+    instruction="extract the product information",
+    schema={
+        "type": "object",
+        "properties": {
+            "name": {"type": "string"},
+            "price": {"type": "number"},
+            "description": {"type": "string"}
+        },
+        "required": ["name", "price"]
+    }
+)
+
+print(f"Product: {data['name']}")
+print(f"Price: ${data['price']}")
+```
+
+### Complex Schema Example
+
+```python
+# Extract a list of items
+result = await session.extract(
+    instruction="extract all user comments from the page",
+    schema={
+        "type": "object",
+        "properties": {
+            "comments": {
+                "type": "array",
+                "items": {
+                    "type": "object",
+                    "properties": {
+                        "author": {"type": "string"},
+                        "text": {"type": "string"},
+                        "timestamp": {"type": "string"},
+                        "upvotes": {"type": "number"}
+                    },
+                    "required": ["author", "text"]
+                }
+            }
+        },
+        "required": ["comments"]
+    }
+)
+
+for comment in result['comments']:
+    print(f"{comment['author']}: {comment['text']}")
+```
+
+### With Streaming
+
+```python
+extract_stream = await session.extract(
+    instruction="extract the page title and description",
+    schema={
+        "type": "object",
+        "properties": {
+            "title": {"type": "string"},
+            "description": {"type": "string"}
+        }
+    },
+    stream_response=True,
+    x_stream_response="true"
+)
+
+async for event in extract_stream:
+    if event.type == "system" and event.data.status == "finished":
+        extracted_data = event.data.result
+        print(f"Title: {extracted_data['title']}")
+```
+
+### Options
+
+<ParamField path="instruction" type="string">
+  Natural language instruction for what to extract
+</ParamField>
+
+<ParamField path="schema" type="object">
+  JSON Schema defining the structure of data to extract. Follow the [JSON Schema specification](https://json-schema.org/).
+</ParamField>
+
+<ParamField path="frame_id" type="string">
+  Target frame ID for extraction (useful for iframes)
+</ParamField>
+
+## Execute (Agent)
+
+The `execute()` method runs an autonomous AI agent that can perform complex multi-step browser tasks without explicit instructions for each step.
+
+### Basic Usage
+
+```python
+result = await session.execute(
+    execute_options={
+        "instruction": "Find the product 'Laptop' and add it to the cart",
+        "max_steps": 10
+    },
+    agent_config={
+        "model": {"model_name": "anthropic/claude-opus-4-6"},
+        "cua": False
+    }
+)
+
+print(f"Agent completed: {result.data.message}")
+print(f"Success: {result.data.success}")
+print(f"Steps taken: {len(result.data.actions)}")
+```
+
+### Complex Agent Task
+
+```python
+result = await session.execute(
+    execute_options={
+        "instruction": (
+            "Research the author 'John Doe' from Hacker News. "
+            "Go to their profile, find any links to their personal website, "
+            "GitHub, or LinkedIn. If not found, search Google for their profile."
+        ),
+        "max_steps": 15
+    },
+    agent_config={
+        "model": {
+            "model_name": "anthropic/claude-opus-4-6",
+            "api_key": os.environ.get("MODEL_API_KEY")
+        },
+        "cua": False  # Disable Computer Use API
+    },
+    timeout=300.0  # 5 minutes
+)
+
+if result.data.success:
+    print(f"Agent found: {result.data.message}")
+else:
+    print(f"Agent failed: {result.data.message}")
+```
+
+### With Streaming
+
+```python
+execute_stream = await session.execute(
+    execute_options={
+        "instruction": "Navigate to the pricing page and find the cheapest plan",
+        "max_steps": 5
+    },
+    agent_config={
+        "model": {"model_name": "anthropic/claude-sonnet-4-6"},
+        "cua": False
+    },
+    stream_response=True,
+    x_stream_response="true"
+)
+
+async for event in execute_stream:
+    if event.type == "log":
+        print(f"[Agent Log] {event.data.message}")
+    elif event.type == "system":
+        if event.data.status == "finished":
+            result = event.data.result
+            print(f"Agent completed in {len(result.get('actions', []))} steps")
+```
+
+### Configuration
+
+<ParamField path="execute_options" type="object" required>
+  Options controlling agent behavior:
+  - `instruction`: The high-level goal for the agent
+  - `max_steps`: Maximum number of steps the agent can take
+</ParamField>
+
+<ParamField path="agent_config" type="object" required>
+  Agent configuration:
+  - `model`: Model configuration including `model_name` and optional `api_key`
+  - `cua`: Whether to use Computer Use API (default: false)
+</ParamField>
+
+<ParamField path="should_cache" type="boolean">
+  Whether to cache the agent's execution for faster repeated runs
+</ParamField>
+
+<ParamField path="frame_id" type="string">
+  Target frame ID for the agent to operate in
+</ParamField>
+
+## Integration with Playwright
+
+You can pass a Playwright `page` object to automatically inject the frame ID:
+
+```python
+from playwright.async_api import async_playwright
+
+async with async_playwright() as p:
+    browser = await p.chromium.connect_over_cdp(cdp_url)
+    page = browser.contexts[0].pages[0]
+    
+    # Frame ID is automatically extracted from the page
+    await session.act(
+        input="click the button",
+        page=page
+    )
+```
+
+## Best Practices
+
+<Note>
+  **Choose the Right Method**
+  - Use `observe()` when you need to see available actions before acting
+  - Use `act()` for single, well-defined actions
+  - Use `extract()` when you need structured data from the page
+  - Use `execute()` for complex multi-step workflows
+</Note>
+
+### Error Handling
+
+Always handle potential errors in your automation:
+
+```python
+try:
+    result = await session.act(input="click the submit button")
+    if result.success:
+        print("Action succeeded")
+    else:
+        print(f"Action failed: {result.data.message}")
+except Exception as e:
+    print(f"Error: {e}")
+```
+
+### Streaming for Long Operations
+
+Use streaming for operations that may take time:
+
+```python
+# Good for monitoring progress
+execute_stream = await session.execute(
+    execute_options={"instruction": "...", "max_steps": 20},
+    agent_config={...},
+    stream_response=True,
+    x_stream_response="true"
+)
+
+async for event in execute_stream:
+    if event.type == "log":
+        # Show progress to user
+        print(f"Progress: {event.data.message}")
+```

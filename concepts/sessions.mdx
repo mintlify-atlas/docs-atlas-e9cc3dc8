@@ -1,0 +1,278 @@
+---
+title: Sessions
+description: Understanding session lifecycle, creation, and management in Stagehand
+---
+
+Sessions are the foundation of browser automation in Stagehand. Each session represents an isolated browser instance where you can perform navigation, observation, actions, and data extraction.
+
+## What is a Session?
+
+A session is a stateful browser instance managed by Stagehand. When you create a session, Stagehand:
+
+- Launches a browser (local or remote via Browserbase)
+- Establishes a Chrome DevTools Protocol (CDP) connection
+- Initializes AI models for intelligent automation
+- Manages the browser lifecycle until you end the session
+
+## Session Lifecycle
+
+<Steps>
+  <Step title="Create a Client">
+    First, instantiate a Stagehand client with your configuration:
+
+    ```python
+    from stagehand import AsyncStagehand
+
+    client = AsyncStagehand(
+        browserbase_api_key="your-key",
+        browserbase_project_id="your-project-id",
+        model_api_key="your-model-key"
+    )
+    ```
+  </Step>
+
+  <Step title="Start a Session">
+    Create a new browser session with your desired model:
+
+    ```python
+    session = await client.sessions.start(
+        model_name="anthropic/claude-sonnet-4-6",
+        browser={"type": "browserbase"}
+    )
+    print(f"Session started: {session.id}")
+    ```
+
+    The session object contains:
+    - `session.id`: Unique session identifier
+    - `session.data`: Session data including CDP URL, status, and configuration
+  </Step>
+
+  <Step title="Perform Operations">
+    Use the session to navigate, observe, act, extract data, and execute agents:
+
+    ```python
+    # Navigate to a page
+    await session.navigate(url="https://example.com")
+
+    # Observe available actions
+    actions = await session.observe(
+        instruction="find the login button"
+    )
+
+    # Perform an action
+    await session.act(input="click the login button")
+
+    # Extract structured data
+    data = await session.extract(
+        instruction="get the page title",
+        schema={"type": "object", "properties": {"title": {"type": "string"}}}
+    )
+    ```
+  </Step>
+
+  <Step title="End the Session">
+    Always end your session to release resources:
+
+    ```python
+    await session.end()
+    print("Session ended")
+    ```
+  </Step>
+</Steps>
+
+## Session Types
+
+### Remote Sessions (Browserbase)
+
+Remote sessions run on Browserbase's cloud infrastructure, providing scalability and reliability:
+
+```python
+session = await client.sessions.start(
+    model_name="anthropic/claude-sonnet-4-6",
+    browser={"type": "browserbase"},
+    browserbase_session_create_params={
+        "region": "us-west-2",
+        "browser_settings": {
+            "solve_captchas": True,
+            "block_ads": True
+        }
+    }
+)
+```
+
+<Note>
+  Remote sessions require `BROWSERBASE_API_KEY` and `BROWSERBASE_PROJECT_ID` to be configured.
+</Note>
+
+### Local Sessions
+
+Local sessions run on your machine for development and testing:
+
+```python
+client = AsyncStagehand(
+    server="local",
+    local_headless=False,  # Set to True for headless mode
+    model_api_key="your-key"
+)
+
+session = await client.sessions.start(
+    model_name="anthropic/claude-sonnet-4-6",
+    browser={"type": "local"}
+)
+```
+
+## Session Configuration
+
+Customize session behavior with various parameters:
+
+<CodeGroup>
+```python Basic Configuration
+session = await client.sessions.start(
+    model_name="anthropic/claude-sonnet-4-6",
+    verbose=2,  # 0=quiet, 1=normal, 2=debug
+    dom_settle_timeout_ms=3000,
+    self_heal=True  # Enable self-healing for failed actions
+)
+```
+
+```python Advanced Configuration
+session = await client.sessions.start(
+    model_name="anthropic/claude-sonnet-4-6",
+    browser={
+        "type": "browserbase",
+        "launch_options": {
+            "headless": True,
+            "viewport": {"width": 1920, "height": 1080}
+        }
+    },
+    browserbase_session_create_params={
+        "browser_settings": {
+            "fingerprint": {
+                "browsers": ["chrome"],
+                "operating_systems": ["macos", "windows"]
+            },
+            "advanced_stealth": True
+        },
+        "timeout": 3600  # Session timeout in seconds
+    },
+    system_prompt="You are a helpful automation assistant."
+)
+```
+</CodeGroup>
+
+## Session Object Properties
+
+The session object returned by `start()` includes:
+
+<ParamField path="id" type="string">
+  Unique identifier for the session. Use this to make API calls via `client.sessions.*` methods.
+</ParamField>
+
+<ParamField path="data" type="object">
+  Session metadata including:
+  - `cdp_url`: Chrome DevTools Protocol URL for connecting to the browser
+  - `status`: Current session status
+  - `browserbase_session_id`: Browserbase session identifier (if using Browserbase)
+</ParamField>
+
+<ParamField path="success" type="boolean">
+  Indicates whether the session was created successfully.
+</ParamField>
+
+## Best Practices
+
+### Use Context Managers
+
+Always use async context managers to ensure proper cleanup:
+
+```python
+async with AsyncStagehand() as client:
+    session = await client.sessions.start(
+        model_name="anthropic/claude-sonnet-4-6"
+    )
+    try:
+        # Your automation code here
+        await session.navigate(url="https://example.com")
+    finally:
+        await session.end()
+```
+
+### Reuse Sessions
+
+You can resume existing Browserbase sessions:
+
+```python
+# Start initial session
+session1 = await client.sessions.start(
+    model_name="anthropic/claude-sonnet-4-6",
+    browser={"type": "browserbase"}
+)
+
+# Get the Browserbase session ID
+bb_session_id = session1.data.browserbase_session_id
+
+# Resume the session later
+session2 = await client.sessions.start(
+    model_name="anthropic/claude-sonnet-4-6",
+    browserbase_session_id=bb_session_id
+)
+```
+
+### Error Handling
+
+Always handle potential errors and ensure sessions are ended:
+
+```python
+try:
+    session = await client.sessions.start(
+        model_name="anthropic/claude-sonnet-4-6"
+    )
+    # Perform operations
+    await session.navigate(url="https://example.com")
+except Exception as e:
+    print(f"Error: {e}")
+finally:
+    if session:
+        await session.end()
+```
+
+## Integration with Playwright
+
+You can combine Stagehand sessions with Playwright for advanced control:
+
+```python
+from playwright.async_api import async_playwright
+
+session = await client.sessions.start(
+    model_name="anthropic/claude-sonnet-4-6",
+    browser={"type": "browserbase"}
+)
+
+cdp_url = session.data.cdp_url
+
+async with async_playwright() as p:
+    browser = await p.chromium.connect_over_cdp(cdp_url)
+    context = browser.contexts[0]
+    page = context.pages[0]
+    
+    # Use Stagehand for AI operations
+    await session.navigate(url="https://example.com")
+    
+    # Use Playwright for precise control
+    await page.wait_for_load_state("domcontentloaded")
+    title = await page.title()
+    print(f"Page title: {title}")
+```
+
+## Session Methods
+
+The session object provides convenient methods for common operations:
+
+- `session.navigate()`: Navigate to a URL
+- `session.observe()`: Find available actions on the page  
+- `session.act()`: Perform an action using natural language or an Action object
+- `session.extract()`: Extract structured data from the page
+- `session.execute()`: Run an autonomous AI agent
+- `session.end()`: Terminate the session and release resources
+
+See the [Actions](/concepts/actions) page for detailed information on these operations.

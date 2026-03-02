@@ -1,0 +1,193 @@
+---
+title: "Introduction"
+description: "Stagehand is an AI-powered browser automation framework that combines natural language with code for flexible, maintainable, and reliable web automation."
+---
+
+## What is Stagehand?
+
+Stagehand is a browser automation framework used to control web browsers with natural language and code. By combining the power of AI with the precision of code, Stagehand makes web automation flexible, maintainable, and actually reliable.
+
+Unlike traditional automation tools that require low-level DOM manipulation or unpredictable AI agents, Stagehand gives you the flexibility to choose when to use natural language and when to use precise code.
+
+## Why Use Stagehand?
+
+Most existing browser automation tools fall into two categories:
+
+1. **Low-level frameworks** like Selenium, Playwright, or Puppeteer that require brittle selectors and manual maintenance
+2. **High-level AI agents** that can be unpredictable and unreliable in production
+
+Stagehand bridges this gap by letting developers choose what to write in code vs. natural language, making it the natural choice for browser automations in production.
+
+### Key Benefits
+
+<CardGroup cols={2}>
+  <Card title="Flexible Control" icon="sliders">
+    Choose when to write code vs. natural language. Use AI when navigating unfamiliar pages, and use code when you know exactly what you want to do.
+  </Card>
+  
+  <Card title="AI to Repeatable" icon="repeat">
+    Preview AI actions before running them, and easily cache repeatable actions to save time and tokens.
+  </Card>
+  
+  <Card title="Self-Healing" icon="wand-magic-sparkle">
+    Auto-caching combined with self-healing remembers previous actions, runs without LLM inference, and knows when to involve AI when websites change.
+  </Card>
+  
+  <Card title="Production Ready" icon="shield-check">
+    Built for reliability with proper error handling, streaming support, and async-first design.
+  </Card>
+</CardGroup>
+
+## Key Features
+
+### Natural Language Actions
+
+Perform browser actions using plain English instructions:
+
+```python
+await session.act(input="click the submit button")
+await session.observe(instruction="find the comments link")
+```
+
+### Structured Data Extraction
+
+Extract data from web pages into typed schemas:
+
+```python
+result = await session.extract(
+    instruction="extract the top comment",
+    schema={
+        "type": "object",
+        "properties": {
+            "commentText": {"type": "string"},
+            "author": {"type": "string"},
+        },
+    },
+)
+```
+
+### Autonomous Agent Execution
+
+Run multi-step workflows with autonomous agents:
+
+```python
+await session.execute(
+    execute_options={
+        "instruction": "Find the user's profile and extract their website",
+        "max_steps": 10,
+    },
+)
+```
+
+### Async-First Design
+
+Built with modern Python async/await patterns:
+
+```python
+async with AsyncStagehand() as client:
+    session = await client.sessions.start()
+    await session.navigate(url="https://example.com")
+    await session.end()
+```
+
+## Core Methods
+
+Stagehand provides five core methods for browser automation:
+
+<AccordionGroup>
+  <Accordion title="navigate()" icon="compass">
+    Navigate to a URL and wait for the page to load.
+    
+    ```python
+    await session.navigate(url="https://example.com")
+    ```
+  </Accordion>
+  
+  <Accordion title="act()" icon="hand-pointer">
+    Perform actions on the page using natural language or action objects.
+    
+    ```python
+    await session.act(input="click the login button")
+    ```
+  </Accordion>
+  
+  <Accordion title="observe()" icon="eye">
+    Find elements and possible actions on the page.
+    
+    ```python
+    actions = await session.observe(instruction="find all buttons")
+    ```
+  </Accordion>
+  
+  <Accordion title="extract()" icon="download">
+    Extract structured data from the page into a schema.
+    
+    ```python
+    data = await session.extract(
+        instruction="get article title and author",
+        schema={...}
+    )
+    ```
+  </Accordion>
+  
+  <Accordion title="execute()" icon="robot">
+    Run an autonomous agent to complete multi-step tasks.
+    
+    ```python
+    await session.execute(
+        execute_options={
+            "instruction": "Complete the checkout process",
+            "max_steps": 5,
+        }
+    )
+    ```
+  </Accordion>
+</AccordionGroup>
+
+## How It Works
+
+Stagehand operates through a managed browser session:
+
+1. **Start a session** with your preferred AI model
+2. **Navigate** to target websites
+3. **Use AI-powered methods** to interact with pages
+4. **Extract data** or perform actions
+5. **End the session** when complete
+
+Each session maintains context and can leverage caching for repeated operations.
+
+## Use Cases
+
+<CardGroup cols={2}>
+  <Card title="Web Scraping" icon="spider-web">
+    Extract data from dynamic websites without brittle selectors.
+  </Card>
+  
+  <Card title="Testing" icon="vial">
+    Write maintainable E2E tests using natural language assertions.
+  </Card>
+  
+  <Card title="Automation" icon="gears">
+    Automate repetitive web tasks like form filling and data entry.
+  </Card>
+  
+  <Card title="Monitoring" icon="chart-line">
+    Monitor web applications and extract metrics automatically.
+  </Card>
+</CardGroup>
+
+<Note>
+  Stagehand requires API keys for Browserbase (browser infrastructure) and an LLM provider like Anthropic or OpenAI.
+</Note>
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Installation" icon="download" href="/installation">
+    Install Stagehand and set up your environment
+  </Card>
+  
+  <Card title="Quickstart" icon="rocket" href="/quickstart">
+    Build your first automation in minutes
+  </Card>
+</CardGroup>

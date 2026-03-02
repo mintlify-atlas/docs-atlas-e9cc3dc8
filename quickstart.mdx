@@ -1,80 +1,389 @@
 ---
-title: "Quickstart"
-description: "Start building awesome documentation in minutes"
+title: Quickstart
+description: Get up and running with Stagehand Python SDK in minutes
 ---
 
-## Get started in three steps
+This guide will help you run your first browser automation with Stagehand in minutes.
 
-Get your documentation site running locally and make your first customization.
+## Prerequisites
 
-### Step 1: Set up your local environment
-
-<AccordionGroup>
-  <Accordion icon="copy" title="Clone your docs locally">
-    During the onboarding process, you created a GitHub repository with your docs content if you didn't already have one. You can find a link to this repository in your [dashboard](https://dashboard.mintlify.com).
+<Steps>
+  <Step title="Install Stagehand">
+    ```bash
+    pip install stagehand
+    ```
     
-    To clone the repository locally so that you can make and preview changes to your docs, follow the [Cloning a repository](https://docs.github.com/en/repositories/creating-and-managing-repositories/cloning-a-repository) guide in the GitHub docs.
-  </Accordion>
-  <Accordion icon="rectangle-terminal" title="Start the preview server">
-    1. Install the Mintlify CLI: `npm i -g mint`
-    2. Navigate to your docs directory and run: `mint dev`
-    3. Open `http://localhost:3000` to see your docs live!
-    
-    <Tip>Your preview updates automatically as you edit files.</Tip>
-  </Accordion>
-</AccordionGroup>
+    Or with uv (recommended):
+    ```bash
+    uv pip install stagehand
+    ```
+  </Step>
 
-### Step 2: Deploy your changes
+  <Step title="Get API Keys">
+    You'll need:
+    - **Browserbase API Key** and **Project ID** from [browserbase.com](https://browserbase.com)
+    - **Model API Key** from your AI provider (e.g., Anthropic, OpenAI)
+  </Step>
 
-<AccordionGroup>
-  <Accordion icon="github" title="Install our GitHub app">
-    Install the Mintlify GitHub app from your [dashboard](https://dashboard.mintlify.com/settings/organization/github-app).
-    
-    Our GitHub app automatically deploys your changes to your docs site, so you don't need to manage deployments yourself.
-</Accordion>
-<Accordion icon="palette" title="Update your site name and colors">
-    For a first change, let's update the name and colors of your docs site.
+  <Step title="Set Environment Variables">
+    ```bash
+    export BROWSERBASE_API_KEY="your-browserbase-api-key"
+    export BROWSERBASE_PROJECT_ID="your-browserbase-project-id"
+    export MODEL_API_KEY="your-model-api-key"
+    ```
+  </Step>
+</Steps>
 
-    1. Open `docs.json` in your editor.
-    2. Change the `"name"` field to your project name.
-    3. Update the `"colors"` to match your brand.
-    4. Save and see your changes instantly at `http://localhost:3000`.
+## Your First Automation
 
-    <Tip>Try changing the primary color to see an immediate difference!</Tip>
-  </Accordion>
-</AccordionGroup>
+Let's create a simple script that navigates to a website and performs an action:
 
-### Step 3: Go live
+```python
+import asyncio
+import os
+from stagehand import AsyncStagehand
 
-<Accordion icon="rocket" title="Publish your docs">
-  1. Commit and push your changes.
-  2. Your docs will update and be live in moments!
-</Accordion>
+async def main():
+    # Create the Stagehand client
+    async with AsyncStagehand(
+        browserbase_api_key=os.environ["BROWSERBASE_API_KEY"],
+        browserbase_project_id=os.environ["BROWSERBASE_PROJECT_ID"],
+        model_api_key=os.environ["MODEL_API_KEY"],
+    ) as client:
+        # Start a browser session
+        session = await client.sessions.start(
+            model_name="anthropic/claude-sonnet-4-6"
+        )
+        
+        print(f"Session started: {session.id}")
+        
+        # Navigate to a website
+        await session.navigate(url="https://www.example.com")
+        print("Navigated to example.com")
+        
+        # Perform an action with natural language
+        result = await session.act(
+            input="click the 'More information' link"
+        )
+        
+        print(f"Action completed: {result.data.get('success')}")
+        
+        # End the session
+        await session.end()
+        print("Session ended")
 
-## Next steps
-
-Now that you have your docs running, explore these key features:
-
-<CardGroup cols={2}>
-
-<Card title="Write Content" icon="pen-to-square" href="/essentials/markdown">
-  Learn MDX syntax and start writing your documentation.
-</Card>
-
-<Card title="Customize style" icon="palette" href="/essentials/settings">
-  Make your docs match your brand perfectly.
-</Card>
-
-<Card title="Add code examples" icon="square-code" href="/essentials/code">
-  Include syntax-highlighted code blocks.
-</Card>
-
-<Card title="API documentation" icon="code" href="/api-reference/introduction">
-  Auto-generate API docs from OpenAPI specs.
-</Card>
-
-</CardGroup>
+if __name__ == "__main__":
+    asyncio.run(main())
+```
 
 <Note>
-  **Need help?** See our [full documentation](https://mintlify.com/docs) or join our [community](https://mintlify.com/community).
+The `async with` statement ensures the client is properly closed when you're done. You can also use the synchronous `Stagehand` client if you prefer.
 </Note>
+
+## Understanding the Code
+
+Let's break down what's happening:
+
+1. **Create Client**: `AsyncStagehand()` initializes the client with your API credentials
+2. **Start Session**: `sessions.start()` launches a browser session with your chosen AI model
+3. **Navigate**: `session.navigate()` loads a URL in the browser
+4. **Act**: `session.act()` performs actions using natural language instructions
+5. **End Session**: `session.end()` cleans up the browser session
+
+## Interactive Example
+
+Here's a more interactive example that observes, acts, and extracts data:
+
+```python
+import asyncio
+import os
+from stagehand import AsyncStagehand
+
+async def main():
+    async with AsyncStagehand(
+        browserbase_api_key=os.environ["BROWSERBASE_API_KEY"],
+        browserbase_project_id=os.environ["BROWSERBASE_PROJECT_ID"],
+        model_api_key=os.environ["MODEL_API_KEY"],
+    ) as client:
+        session = await client.sessions.start(
+            model_name="anthropic/claude-sonnet-4-6"
+        )
+        
+        # Navigate to Hacker News
+        await session.navigate(url="https://news.ycombinator.com")
+        
+        # Observe available actions
+        observations = await session.observe(
+            instruction="find the link to the top post"
+        )
+        print(f"Found {len(observations.data)} possible actions")
+        
+        # Click the top post
+        await session.act(
+            input="click the link to the top post"
+        )
+        
+        # Extract structured data
+        article = await session.extract(
+            instruction="extract the article title and first paragraph",
+            schema={
+                "type": "object",
+                "properties": {
+                    "title": {"type": "string"},
+                    "content": {"type": "string"}
+                },
+                "required": ["title"]
+            }
+        )
+        
+        print(f"Article: {article.data}")
+        
+        await session.end()
+
+if __name__ == "__main__":
+    asyncio.run(main())
+```
+
+## Streaming Example
+
+Get real-time feedback as your automation runs:
+
+```python
+import asyncio
+import os
+from stagehand import AsyncStagehand
+
+async def main():
+    async with AsyncStagehand(
+        browserbase_api_key=os.environ["BROWSERBASE_API_KEY"],
+        browserbase_project_id=os.environ["BROWSERBASE_PROJECT_ID"],
+        model_api_key=os.environ["MODEL_API_KEY"],
+    ) as client:
+        session = await client.sessions.start(
+            model_name="anthropic/claude-sonnet-4-6"
+        )
+        
+        await session.navigate(url="https://www.example.com")
+        
+        # Stream events as the action happens
+        stream = await session.act(
+            input="click the 'More information' link",
+            stream_response=True,
+            x_stream_response="true"
+        )
+        
+        async for event in stream:
+            if event.type == "log":
+                print(f"[LOG] {event.data.message}")
+            elif event.type == "system":
+                print(f"[SYSTEM] Status: {event.data.status}")
+        
+        await session.end()
+
+if __name__ == "__main__":
+    asyncio.run(main())
+```
+
+<Tip>
+Streaming is useful for long-running operations. Set both `stream_response=True` and `x_stream_response="true"` to enable it.
+</Tip>
+
+## Autonomous Agent Example
+
+Let Stagehand run multi-step workflows autonomously:
+
+```python
+import asyncio
+import os
+from stagehand import AsyncStagehand
+
+async def main():
+    async with AsyncStagehand(
+        browserbase_api_key=os.environ["BROWSERBASE_API_KEY"],
+        browserbase_project_id=os.environ["BROWSERBASE_PROJECT_ID"],
+        model_api_key=os.environ["MODEL_API_KEY"],
+    ) as client:
+        session = await client.sessions.start(
+            model_name="anthropic/claude-sonnet-4-6"
+        )
+        
+        await session.navigate(url="https://news.ycombinator.com")
+        
+        # Let the agent figure out the steps
+        result = await session.execute(
+            execute_options={
+                "instruction": "Find the top post, click it, and summarize the content",
+                "max_steps": 5
+            }
+        )
+        
+        print(f"Agent completed {len(result.data.actions_taken)} steps")
+        print(f"Result: {result.data.result}")
+        
+        await session.end()
+
+if __name__ == "__main__":
+    asyncio.run(main())
+```
+
+## Core Methods Summary
+
+<CodeGroup>
+```python navigate
+# Navigate to a URL
+await session.navigate(url="https://example.com")
+```
+
+```python act
+# Perform an action
+await session.act(input="click the button")
+```
+
+```python observe
+# Find available actions
+actions = await session.observe(instruction="find the search button")
+```
+
+```python extract
+# Extract structured data
+data = await session.extract(
+    instruction="get the product price",
+    schema={"type": "object", "properties": {"price": {"type": "number"}}}
+)
+```
+
+```python execute
+# Run autonomous workflow
+result = await session.execute(
+    execute_options={
+        "instruction": "Complete the checkout process",
+        "max_steps": 10
+    }
+)
+```
+</CodeGroup>
+
+## Error Handling
+
+Always handle errors in production:
+
+```python
+import asyncio
+import stagehand
+from stagehand import AsyncStagehand
+
+async def main():
+    try:
+        async with AsyncStagehand() as client:
+            session = await client.sessions.start(
+                model_name="anthropic/claude-sonnet-4-6"
+            )
+            
+            await session.navigate(url="https://example.com")
+            
+            result = await session.act(input="click something")
+            
+            await session.end()
+            
+    except stagehand.AuthenticationError:
+        print("Invalid API credentials")
+    except stagehand.RateLimitError:
+        print("Rate limit exceeded, try again later")
+    except stagehand.APIError as e:
+        print(f"API error: {e}")
+
+if __name__ == "__main__":
+    asyncio.run(main())
+```
+
+## Best Practices
+
+<Accordion title="Use context managers">
+  Always use `async with` or `with` to ensure resources are cleaned up properly:
+  
+  ```python
+  async with AsyncStagehand() as client:
+      # Your code here
+      pass
+  # Client is automatically closed
+  ```
+</Accordion>
+
+<Accordion title="Set appropriate timeouts">
+  Configure timeouts based on your use case:
+  
+  ```python
+  client = AsyncStagehand(timeout=30.0)  # 30 seconds
+  ```
+</Accordion>
+
+<Accordion title="Handle rate limits">
+  Implement retry logic for rate limit errors:
+  
+  ```python
+  from tenacity import retry, stop_after_attempt, wait_exponential
+  
+  @retry(stop=stop_after_attempt(3), wait=wait_exponential(min=1, max=60))
+  async def my_automation():
+      # Your automation code
+      pass
+  ```
+</Accordion>
+
+<Accordion title="Use streaming for long operations">
+  Enable streaming for operations that take more than a few seconds to get real-time feedback.
+</Accordion>
+
+<Accordion title="Choose the right model">
+  Use faster models like `claude-sonnet-4-6` for most tasks. Use `claude-opus-4-6` for complex reasoning.
+</Accordion>
+
+<Accordion title="Minimize AI calls with observe + act">
+  Use `observe()` once to find elements, then reuse those Action objects with `act()` to save API calls.
+</Accordion>
+
+## Troubleshooting
+
+<AccordionGroup>
+  <Accordion title="Authentication Error">
+    Verify your API keys are set correctly:
+    ```bash
+    echo $BROWSERBASE_API_KEY
+    echo $MODEL_API_KEY
+    ```
+  </Accordion>
+
+  <Accordion title="Session Creation Fails">
+    Check that your Browserbase project ID is correct and your account has available credits.
+  </Accordion>
+
+  <Accordion title="Action Doesn't Work">
+    Try being more specific in your instructions:
+    - ❌ "click button"
+    - ✅ "click the blue Submit button at the bottom of the form"
+  </Accordion>
+
+  <Accordion title="Timeout Errors">
+    Increase the timeout for slow operations:
+    ```python
+    client = AsyncStagehand(timeout=120.0)  # 2 minutes
+    ```
+  </Accordion>
+</AccordionGroup>
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Core Concepts" icon="book" href="/concepts/sessions">
+    Learn about sessions, actions, and configuration
+  </Card>
+  <Card title="Guides" icon="map" href="/guides/observing-elements">
+    Detailed guides for each operation
+  </Card>
+  <Card title="Examples" icon="code" href="/examples/basic-automation">
+    Real-world examples and patterns
+  </Card>
+  <Card title="API Reference" icon="brackets-curly" href="/api/client/async-stagehand">
+    Complete API documentation
+  </Card>
+</CardGroup>

@@ -1,0 +1,190 @@
+---
+title: "Start Session"
+description: "Create a new browser session with the specified configuration"
+---
+
+## Method Signature
+
+```python
+client.sessions.start(
+    model_name: str,
+    act_timeout_ms: float = None,
+    browser: dict = None,
+    browserbase_session_create_params: dict = None,
+    browserbase_session_id: str = None,
+    dom_settle_timeout_ms: float = None,
+    experimental: bool = None,
+    self_heal: bool = None,
+    system_prompt: str = None,
+    verbose: Literal[0, 1, 2] = None,
+    wait_for_captcha_solves: bool = None,
+) -> SessionStartResponse
+```
+
+## Parameters
+
+<ParamField path="model_name" type="string" required>
+Model name to use for AI operations.
+
+Always use the format `provider/model-name` (e.g., `openai/gpt-4o`, `anthropic/claude-sonnet-4-6`, `google/gemini-2.0-flash`)
+</ParamField>
+
+<ParamField path="browser" type="object">
+Browser configuration for the session.
+
+<Expandable title="Browser properties">
+  <ParamField path="type" type="string">
+  Browser type to use: `local` or `browserbase`
+  </ParamField>
+
+  <ParamField path="cdp_url" type="string">
+  Chrome DevTools Protocol URL for connecting to existing browser
+  </ParamField>
+
+  <ParamField path="launch_options" type="object">
+  Browser launch options (headless, viewport, proxy, etc.)
+  </ParamField>
+</Expandable>
+</ParamField>
+
+<ParamField path="browserbase_session_create_params" type="object">
+Parameters for creating a new Browserbase session.
+
+<Expandable title="Browserbase session parameters">
+  <ParamField path="project_id" type="string">
+  Browserbase project ID
+  </ParamField>
+
+  <ParamField path="browser_settings" type="object">
+  Browser settings (stealth, captcha solving, recording, etc.)
+  </ParamField>
+
+  <ParamField path="proxies" type="array">
+  Proxy configurations
+  </ParamField>
+
+  <ParamField path="region" type="string">
+  Region: `us-west-2`, `us-east-1`, `eu-central-1`, `ap-southeast-1`
+  </ParamField>
+
+  <ParamField path="timeout" type="number">
+  Session timeout in seconds
+  </ParamField>
+</Expandable>
+</ParamField>
+
+<ParamField path="browserbase_session_id" type="string">
+Existing Browserbase session ID to resume
+</ParamField>
+
+<ParamField path="dom_settle_timeout_ms" type="number">
+Timeout in milliseconds to wait for DOM to settle
+</ParamField>
+
+<ParamField path="self_heal" type="boolean">
+Enable self-healing for failed actions
+</ParamField>
+
+<ParamField path="system_prompt" type="string">
+Custom system prompt for AI operations
+</ParamField>
+
+<ParamField path="verbose" type="integer">
+Logging verbosity level:
+- `0`: quiet
+- `1`: normal
+- `2`: debug
+</ParamField>
+
+<ParamField path="act_timeout_ms" type="number">
+Timeout in milliseconds for act operations (deprecated, v2 only)
+</ParamField>
+
+<ParamField path="wait_for_captcha_solves" type="boolean">
+Wait for captcha solves (deprecated, v2 only)
+</ParamField>
+
+<ParamField path="experimental" type="boolean">
+Enable experimental features
+</ParamField>
+
+## Response
+
+<ResponseField name="success" type="boolean" required>
+Indicates whether the request was successful
+</ResponseField>
+
+<ResponseField name="data" type="object" required>
+<Expandable title="Data properties">
+  <ResponseField name="session_id" type="string" required>
+  Unique session identifier for all subsequent operations
+  </ResponseField>
+
+  <ResponseField name="available" type="boolean" required>
+  Whether the session is available
+  </ResponseField>
+
+  <ResponseField name="cdp_url" type="string">
+  CDP WebSocket URL for connecting to the Browserbase cloud browser (present when available)
+  </ResponseField>
+</Expandable>
+</ResponseField>
+
+## Examples
+
+### Basic session with Browserbase
+
+```python
+from stagehand import Stagehand
+
+client = Stagehand(
+    browserbase_api_key="your-api-key",
+    browserbase_project_id="your-project-id",
+    model_api_key="your-model-api-key",
+)
+
+session = client.sessions.start(
+    model_name="anthropic/claude-sonnet-4-6",
+    browser={"type": "browserbase"},
+)
+
+print(f"Session ID: {session.data.session_id}")
+print(f"CDP URL: {session.data.cdp_url}")
+```
+
+### Session with custom configuration
+
+```python
+session = client.sessions.start(
+    model_name="openai/gpt-4o",
+    browser={"type": "browserbase"},
+    self_heal=True,
+    verbose=2,
+    system_prompt="You are a helpful browser automation assistant.",
+    dom_settle_timeout_ms=5000,
+)
+```
+
+### Local browser session
+
+```python
+session = client.sessions.start(
+    model_name="anthropic/claude-sonnet-4-6",
+    browser={
+        "type": "local",
+        "launch_options": {
+            "headless": False,
+            "viewport": {"width": 1920, "height": 1080},
+        },
+    },
+)
+```
+
+### Resume existing Browserbase session
+
+```python
+session = client.sessions.start(
+    model_name="anthropic/claude-sonnet-4-6",
+    browserbase_session_id="existing-session-id",
+)
+```

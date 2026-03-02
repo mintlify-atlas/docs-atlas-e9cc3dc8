@@ -1,0 +1,395 @@
+---
+title: Extracting Data
+description: Extract structured data from web pages using JSON schemas
+---
+
+The `extract()` method uses AI to extract structured data from web pages. You define what you want using a JSON schema, and Stagehand returns the data in exactly that format.
+
+## Basic Usage
+
+```python
+import asyncio
+from stagehand import AsyncStagehand
+
+async def main():
+    async with AsyncStagehand() as client:
+        session = await client.sessions.start(
+            model_name="anthropic/claude-sonnet-4-6"
+        )
+        
+        await session.navigate(url="https://news.ycombinator.com")
+        
+        # Extract structured data
+        response = await session.extract(
+            instruction="extract the text of the top comment on this page",
+            schema={
+                "type": "object",
+                "properties": {
+                    "commentText": {
+                        "type": "string",
+                        "description": "The text content of the top comment"
+                    },
+                    "author": {
+                        "type": "string",
+                        "description": "The username of the comment author"
+                    }
+                },
+                "required": ["commentText"]
+            }
+        )
+        
+        extracted_data = response.data
+        print(f"Comment: {extracted_data['commentText']}")
+        print(f"Author: {extracted_data['author']}")
+        
+        await session.end()
+
+asyncio.run(main())
+```
+
+## Streaming Responses
+
+Get real-time updates during extraction:
+
+```python
+async def extract_with_streaming():
+    async with AsyncStagehand() as client:
+        session = await client.sessions.start(
+            model_name="anthropic/claude-sonnet-4-6"
+        )
+        
+        await session.navigate(url="https://example.com/products")
+        
+        stream = await session.extract(
+            instruction="extract all product information",
+            schema={
+                "type": "array",
+                "items": {
+                    "type": "object",
+                    "properties": {
+                        "name": {"type": "string"},
+                        "price": {"type": "number"},
+                        "inStock": {"type": "boolean"}
+                    }
+                }
+            },
+            stream_response=True,
+            x_stream_response="true"
+        )
+        
+        extracted_data = None
+        async for event in stream:
+            if event.type == "log":
+                print(f"[LOG] {event.data.message}")
+            elif event.type == "system":
+                if event.data.status == "finished":
+                    extracted_data = event.data.result
+                    print(f"Extracted {len(extracted_data)} products")
+        
+        await session.end()
+```
+
+## Schema Examples
+
+### Single Object
+
+```python
+# Extract a single article
+schema = {
+    "type": "object",
+    "properties": {
+        "title": {"type": "string"},
+        "publishDate": {"type": "string"},
+        "author": {"type": "string"},
+        "content": {"type": "string"},
+        "tags": {
+            "type": "array",
+            "items": {"type": "string"}
+        }
+    },
+    "required": ["title", "content"]
+}
+
+response = await session.extract(
+    instruction="extract the main article information",
+    schema=schema
+)
+```
+
+### Array of Objects
+
+```python
+# Extract multiple items
+schema = {
+    "type": "array",
+    "items": {
+        "type": "object",
+        "properties": {
+            "productName": {"type": "string"},
+            "price": {"type": "number"},
+            "rating": {"type": "number"},
+            "reviewCount": {"type": "integer"}
+        },
+        "required": ["productName", "price"]
+    }
+}
+
+response = await session.extract(
+    instruction="extract all products on this page",
+    schema=schema
+)
+
+for product in response.data:
+    print(f"{product['productName']}: ${product['price']}")
+```
+
+### Nested Objects
+
+```python
+# Extract complex nested data
+schema = {
+    "type": "object",
+    "properties": {
+        "companyName": {"type": "string"},
+        "contact": {
+            "type": "object",
+            "properties": {
+                "email": {"type": "string"},
+                "phone": {"type": "string"},
+                "address": {
+                    "type": "object",
+                    "properties": {
+                        "street": {"type": "string"},
+                        "city": {"type": "string"},
+                        "country": {"type": "string"}
+                    }
+                }
+            }
+        },
+        "employees": {
+            "type": "array",
+            "items": {
+                "type": "object",
+                "properties": {
+                    "name": {"type": "string"},
+                    "role": {"type": "string"}
+                }
+            }
+        }
+    }
+}
+```
+
+### Multiple Data Types
+
+```python
+schema = {
+    "type": "object",
+    "properties": {
+        "title": {"type": "string"},
+        "viewCount": {"type": "integer"},
+        "rating": {"type": "number"},
+        "isPremium": {"type": "boolean"},
+        "publishedAt": {"type": "string", "format": "date-time"},
+        "categories": {
+            "type": "array",
+            "items": {"type": "string"}
+        },
+        "metadata": {
+            "type": "object",
+            "additionalProperties": True
+        }
+    }
+}
+```
+
+## Parameters
+
+<ParamField path="instruction" type="string">
+  Natural language description of what data to extract
+</ParamField>
+
+<ParamField path="schema" type="dict">
+  JSON Schema defining the structure of the data you want extracted. Supports all standard JSON Schema types and validation
+</ParamField>
+
+<ParamField path="frame_id" type="string">
+  Optional. Extract data from a specific iframe
+</ParamField>
+
+<ParamField path="options" type="object">
+  Optional configuration:
+  - `model`: Model configuration or model name string
+  - `timeout`: Timeout in milliseconds for the extraction
+</ParamField>
+
+<ParamField path="stream_response" type="boolean" default="false">
+  Enable SSE streaming for real-time updates
+</ParamField>
+
+<ParamField path="x_stream_response" type="string">
+  Set to `"true"` to enable server-side streaming (required with `stream_response=True`)
+</ParamField>
+
+## Return Value
+
+### Non-Streaming
+
+Returns `SessionExtractResponse` with:
+
+```python
+response.data  # Extracted data matching your schema
+response.success  # Boolean indicating success
+```
+
+### Streaming
+
+Returns an async iterator of `StreamEvent` objects:
+
+```python
+event.type  # "log" or "system"
+event.data.status  # "running", "finished", or "error"
+event.data.result  # Extracted data when status is "finished"
+event.data.error  # Error message if extraction failed
+```
+
+## Common Use Cases
+
+### Scraping Search Results
+
+```python
+await session.navigate(url="https://example.com/search?q=laptops")
+
+results = await session.extract(
+    instruction="extract all search results",
+    schema={
+        "type": "array",
+        "items": {
+            "type": "object",
+            "properties": {
+                "title": {"type": "string"},
+                "url": {"type": "string"},
+                "snippet": {"type": "string"},
+                "price": {"type": "number"}
+            }
+        }
+    }
+)
+```
+
+### Extracting Table Data
+
+```python
+table_data = await session.extract(
+    instruction="extract the data from the pricing table",
+    schema={
+        "type": "array",
+        "items": {
+            "type": "object",
+            "properties": {
+                "plan": {"type": "string"},
+                "price": {"type": "number"},
+                "features": {
+                    "type": "array",
+                    "items": {"type": "string"}
+                }
+            }
+        }
+    }
+)
+```
+
+### Monitoring Changes
+
+```python
+# Extract data periodically to track changes
+import json
+
+previous_data = None
+
+while True:
+    current_data = await session.extract(
+        instruction="extract current stock price and volume",
+        schema={
+            "type": "object",
+            "properties": {
+                "price": {"type": "number"},
+                "volume": {"type": "integer"},
+                "change": {"type": "number"}
+            }
+        }
+    )
+    
+    if previous_data and current_data.data != previous_data:
+        print("Data changed!")
+        print(json.dumps(current_data.data, indent=2))
+    
+    previous_data = current_data.data
+    await asyncio.sleep(60)  # Check every minute
+```
+
+## Best Practices
+
+<Tip>
+Include descriptions in your schema properties. This helps the AI understand what data to extract: `{"type": "string", "description": "The product SKU number"}`
+</Tip>
+
+<Warning>
+Be specific in your instructions. Instead of "extract comments", say "extract the first 5 comments including author, text, and timestamp".
+</Warning>
+
+<Info>
+Use `required` fields in your schema to ensure critical data is always extracted.
+</Info>
+
+## Handling Extraction Errors
+
+```python
+try:
+    response = await session.extract(
+        instruction="extract product details",
+        schema=my_schema
+    )
+    
+    # Validate the extracted data
+    if not response.data:
+        print("No data extracted")
+    elif 'price' not in response.data:
+        print("Price field missing")
+    else:
+        print(f"Successfully extracted: {response.data}")
+        
+except stagehand.APIStatusError as e:
+    print(f"Extraction failed: {e.message}")
+```
+
+## Using with Pydantic Models
+
+You can use Pydantic models to define your schema:
+
+```python
+from pydantic import BaseModel
+from typing import List
+
+class Product(BaseModel):
+    name: str
+    price: float
+    in_stock: bool
+    rating: float | None = None
+
+class ProductList(BaseModel):
+    products: List[Product]
+
+# Convert Pydantic model to JSON schema
+schema = ProductList.model_json_schema()
+
+response = await session.extract(
+    instruction="extract all products",
+    schema=schema
+)
+
+# Parse response into Pydantic model
+product_list = ProductList(**response.data)
+for product in product_list.products:
+    print(f"{product.name}: ${product.price}")
+```

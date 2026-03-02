@@ -1,0 +1,446 @@
+---
+title: "Error Handling"
+description: "Best practices for handling exceptions in the Stagehand Python SDK"
+---
+
+The Stagehand SDK provides robust error handling with automatic retries, detailed error information, and a clear exception hierarchy.
+
+## Basic Error Handling
+
+The most basic error handling pattern catches specific exception types:
+
+```python
+import stagehand
+from stagehand import AsyncStagehand
+
+async def main():
+    async with AsyncStagehand() as client:
+        try:
+            session = await client.sessions.start(
+                model_name="anthropic/claude-sonnet-4-6"
+            )
+        except stagehand.AuthenticationError:
+            print("Invalid API credentials")
+        except stagehand.RateLimitError:
+            print("Rate limit exceeded - backing off")
+        except stagehand.APIConnectionError as e:
+            print(f"Connection failed: {e.__cause__}")
+        except stagehand.APIStatusError as e:
+            print(f"API error {e.status_code}: {e.message}")
+```
+
+## Error Attributes
+
+All exceptions provide detailed information about what went wrong:
+
+### APIStatusError Attributes
+
+```python
+import stagehand
+
+try:
+    session = client.sessions.start(model_name="anthropic/claude-sonnet-4-6")
+except stagehand.APIStatusError as e:
+    # HTTP status code (400, 401, 403, 404, 422, 429, 500, etc.)
+    print(f"Status code: {e.status_code}")
+    
+    # Complete HTTP response object
+    print(f"Response headers: {e.response.headers}")
+    print(f"Response body: {e.response.text}")
+    
+    # Human-readable error message
+    print(f"Message: {e.message}")
+    
+    # Original request that failed
+    print(f"Request URL: {e.request.url}")
+    print(f"Request method: {e.request.method}")
+    
+    # Parsed response body (JSON or raw)
+    print(f"Body: {e.body}")
+```
+
+### APIConnectionError Attributes
+
+```python
+import stagehand
+
+try:
+    session = client.sessions.start(model_name="anthropic/claude-sonnet-4-6")
+except stagehand.APIConnectionError as e:
+    # Error message
+    print(f"Message: {e.message}")
+    
+    # Original request
+    print(f"Request URL: {e.request.url}")
+    
+    # Underlying exception (from httpx)
+    print(f"Cause: {e.__cause__}")
+```
+
+## Exception Hierarchy Pattern
+
+Use the exception hierarchy to handle errors at different levels of specificity:
+
+```python
+import stagehand
+from stagehand import AsyncStagehand
+
+async def create_session_with_retry():
+    async with AsyncStagehand() as client:
+        try:
+            return await client.sessions.start(
+                model_name="anthropic/claude-sonnet-4-6"
+            )
+        except stagehand.RateLimitError:
+            # Handle rate limits specifically
+            print("Rate limited - waiting before retry")
+            await asyncio.sleep(60)
+            return await client.sessions.start(
+                model_name="anthropic/claude-sonnet-4-6"
+            )
+        except stagehand.APIStatusError as e:
+            # Handle other API errors
+            if e.status_code >= 500:
+                print("Server error - automatic retry will occur")
+            raise
+        except stagehand.APIConnectionError:
+            # Handle connection issues
+            print("Network error - automatic retry will occur")
+            raise
+        except stagehand.APIError:
+            # Catch-all for any other API errors
+            print("Unexpected API error")
+            raise
+```
+
+## Automatic Retries
+
+The SDK automatically retries certain errors with exponential backoff:
+
+### Default Retry Behavior
+
+- **Retry count:** 2 retries (3 total attempts)
+- **Backoff:** Short exponential backoff between retries
+- **Retried errors:**
+  - Connection errors (network issues)
+  - 408 Request Timeout
+  - 409 Conflict
+  - 429 Rate Limit
+  - 500+ Internal Server Errors
+
+```python
+from stagehand import AsyncStagehand
+
+# Uses default retry settings (2 retries)
+client = AsyncStagehand()
+
+# These errors will be automatically retried:
+try:
+    session = await client.sessions.start(model_name="anthropic/claude-sonnet-4-6")
+except stagehand.RateLimitError:
+    # Only raised after 3 failed attempts
+    print("Failed after retries")
+```
+
+### Configuring Retries
+
+You can configure retry behavior at the client or request level:
+
+```python
+from stagehand import AsyncStagehand
+
+# Disable retries entirely
+client = AsyncStagehand(max_retries=0)
+
+# Increase retry attempts
+client = AsyncStagehand(max_retries=5)
+
+# Configure per-request
+await client.with_options(max_retries=3).sessions.start(
+    model_name="anthropic/claude-sonnet-4-6"
+)
+```
+
+### Manual Retry Logic
+
+For custom retry logic, disable automatic retries and implement your own:
+
+```python
+import asyncio
+import stagehand
+from stagehand import AsyncStagehand
+
+async def start_session_with_custom_retry():
+    async with AsyncStagehand(max_retries=0) as client:
+        max_attempts = 5
+        base_delay = 1.0
+        
+        for attempt in range(max_attempts):
+            try:
+                return await client.sessions.start(
+                    model_name="anthropic/claude-sonnet-4-6"
+                )
+            except stagehand.RateLimitError:
+                if attempt == max_attempts - 1:
+                    raise
+                delay = base_delay * (2 ** attempt)
+                print(f"Rate limited, waiting {delay}s before retry {attempt + 1}")
+                await asyncio.sleep(delay)
+            except stagehand.InternalServerError:
+                if attempt == max_attempts - 1:
+                    raise
+                delay = base_delay * (2 ** attempt)
+                print(f"Server error, retrying in {delay}s")
+                await asyncio.sleep(delay)
+```
+
+## Timeout Configuration
+
+By default, requests timeout after 60 seconds. Configure timeouts to prevent long-running operations:
+
+```python
+import httpx
+from stagehand import AsyncStagehand
+
+# Set global timeout (in seconds)
+client = AsyncStagehand(timeout=120.0)
+
+# Use httpx.Timeout for fine-grained control
+client = AsyncStagehand(
+    timeout=httpx.Timeout(
+        connect=10.0,  # Connection timeout
+        read=60.0,     # Read timeout
+        write=10.0,    # Write timeout
+        pool=5.0,      # Pool timeout
+    )
+)
+
+# Configure per-request
+await client.with_options(timeout=180.0).sessions.execute(
+    session_id,
+    execute_options={"instruction": "complex task", "max_steps": 10},
+)
+```
+
+### Handling Timeouts
+
+```python
+import stagehand
+
+try:
+    result = await client.sessions.execute(
+        session_id,
+        execute_options={"instruction": "long task", "max_steps": 20},
+    )
+except stagehand.APITimeoutError:
+    print("Operation timed out - increase timeout or simplify the task")
+```
+
+<Note>
+Timeout errors are automatically retried twice by default, so an `APITimeoutError` means the operation timed out 3 times.
+</Note>
+
+## Common Error Patterns
+
+### Authentication Errors
+
+```python
+import os
+import stagehand
+from stagehand import AsyncStagehand
+
+async def create_authenticated_client():
+    try:
+        client = AsyncStagehand(
+            browserbase_api_key=os.environ.get("BROWSERBASE_API_KEY"),
+            browserbase_project_id=os.environ.get("BROWSERBASE_PROJECT_ID"),
+            model_api_key=os.environ.get("MODEL_API_KEY"),
+        )
+        # Test authentication
+        session = await client.sessions.start(model_name="anthropic/claude-sonnet-4-6")
+        return client
+    except stagehand.AuthenticationError:
+        print("Authentication failed. Check your API keys:")
+        print("- BROWSERBASE_API_KEY")
+        print("- BROWSERBASE_PROJECT_ID")
+        print("- MODEL_API_KEY")
+        raise
+```
+
+### Rate Limiting
+
+```python
+import asyncio
+import stagehand
+from stagehand import AsyncStagehand
+
+async def batch_operations_with_rate_limiting():
+    async with AsyncStagehand() as client:
+        session = await client.sessions.start(model_name="anthropic/claude-sonnet-4-6")
+        
+        tasks = ["task 1", "task 2", "task 3", "task 4"]
+        
+        for task in tasks:
+            try:
+                await client.sessions.act(session.id, input=task)
+            except stagehand.RateLimitError:
+                print("Rate limit hit, waiting 60 seconds")
+                await asyncio.sleep(60)
+                # Retry the task
+                await client.sessions.act(session.id, input=task)
+```
+
+### Resource Not Found
+
+```python
+import stagehand
+
+async def safe_session_end(client, session_id: str):
+    try:
+        await client.sessions.end(session_id)
+    except stagehand.NotFoundError:
+        print(f"Session {session_id} not found - may have already ended")
+        # Don't raise - this is not necessarily an error
+```
+
+### Network Errors
+
+```python
+import stagehand
+from stagehand import AsyncStagehand
+
+async def robust_api_call():
+    async with AsyncStagehand() as client:
+        try:
+            session = await client.sessions.start(
+                model_name="anthropic/claude-sonnet-4-6"
+            )
+        except stagehand.APITimeoutError:
+            print("Request timed out after retries")
+            raise
+        except stagehand.APIConnectionError as e:
+            print(f"Network error: {e.__cause__}")
+            print("Check your internet connection and try again")
+            raise
+```
+
+## Response Validation
+
+Enable strict response validation to catch API schema mismatches early:
+
+```python
+from stagehand import AsyncStagehand, APIResponseValidationError
+
+async def main():
+    async with AsyncStagehand(_strict_response_validation=True) as client:
+        try:
+            session = await client.sessions.start(
+                model_name="anthropic/claude-sonnet-4-6"
+            )
+        except APIResponseValidationError as e:
+            print(f"API returned invalid data: {e}")
+            print(f"Status code: {e.status_code}")
+            print(f"Response: {e.response.text}")
+            # This might indicate an API change or bug
+            raise
+```
+
+<Warning>
+By default, response validation is permissive and only raises errors when you try to use invalid data. Enable `_strict_response_validation=True` to validate responses immediately.
+</Warning>
+
+## Best Practices
+
+### 1. Use Specific Exception Handlers
+
+```python
+# Good: Handle specific errors differently
+try:
+    session = await client.sessions.start(model_name="anthropic/claude-sonnet-4-6")
+except stagehand.AuthenticationError:
+    # Fix auth and retry
+    pass
+except stagehand.RateLimitError:
+    # Wait and retry
+    pass
+
+# Avoid: Catching all exceptions the same way
+try:
+    session = await client.sessions.start(model_name="anthropic/claude-sonnet-4-6")
+except Exception:
+    # What went wrong?
+    pass
+```
+
+### 2. Log Error Details
+
+```python
+import logging
+import stagehand
+
+logger = logging.getLogger(__name__)
+
+try:
+    session = await client.sessions.start(model_name="anthropic/claude-sonnet-4-6")
+except stagehand.APIStatusError as e:
+    logger.error(
+        "API request failed",
+        extra={
+            "status_code": e.status_code,
+            "url": str(e.request.url),
+            "message": e.message,
+            "response_body": e.body,
+        },
+    )
+    raise
+```
+
+### 3. Clean Up Resources
+
+```python
+import stagehand
+from stagehand import AsyncStagehand
+
+async def perform_automation():
+    async with AsyncStagehand() as client:
+        session = None
+        try:
+            session = await client.sessions.start(
+                model_name="anthropic/claude-sonnet-4-6"
+            )
+            await client.sessions.act(session.id, input="click button")
+        except stagehand.APIError as e:
+            print(f"Error: {e.message}")
+            raise
+        finally:
+            # Always clean up the session
+            if session:
+                try:
+                    await client.sessions.end(session.id)
+                except stagehand.NotFoundError:
+                    # Session already ended
+                    pass
+```
+
+### 4. Don't Retry Non-Retryable Errors
+
+```python
+import stagehand
+
+# Don't retry client errors (4xx) - fix the request instead
+try:
+    session = await client.sessions.start(model_name="anthropic/claude-sonnet-4-6")
+except stagehand.BadRequestError:
+    # Don't retry - the request is invalid
+    print("Invalid request - check parameters")
+    raise
+except stagehand.AuthenticationError:
+    # Don't retry - authentication is invalid
+    print("Invalid credentials")
+    raise
+```
+
+## See Also
+
+- [Exception Types](/api/exceptions/error-types) - Complete reference of all exception classes
+- [Client Configuration](/concepts/client-configuration) - Configure timeouts and retries
